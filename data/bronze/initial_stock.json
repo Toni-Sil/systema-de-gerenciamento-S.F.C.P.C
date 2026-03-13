@@ -1,0 +1,45 @@
+[
+    {
+        "tenant_slug": "global-logistics",
+        "sku": "TEC-LINHO-OFF",
+        "desc": "Tecido Linho Off-White",
+        "category": "TECIDOS",
+        "qty": "300.5",
+        "unit": "metros",
+        "batch": "LOTE-TEC-001",
+        "exp": "",
+        "attributes": {
+            "tecido": {
+                "tonalidade": "Off-White",
+                "metragem": 300.5,
+                "gramatura": 280.0
+            }
+        }
+    },
+    {
+        "tenant_slug": "global-logistics",
+        "sku": "ESP-D28-ASSENTO",
+        "desc": "Espuma D28 para Assentos",
+        "category": "ESPUMAS",
+        "qty": "50",
+        "unit": "pecas",
+        "batch": "LOTE-ESP-002",
+        "exp": "2027-12-31",
+        "attributes": {
+            "espuma": {
+                "densidade": "D28",
+                "dimensoes_cm": "100x200x12"
+            }
+        }
+    },
+    {
+        "tenant_slug": "global-logistics",
+        "sku": "FER-CATRACA-3P",
+        "desc": "Catraca 3 Posições para Encosto",
+        "category": "FERRAGENS",
+        "qty": "1000",
+        "unit": "unidades",
+        "batch": "LOTE-FER-003",
+        "exp": ""
+    }
+]
