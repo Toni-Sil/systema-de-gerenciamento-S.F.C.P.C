@@ -1,46 +1,56 @@
-from fastapi import Request, HTTPException
-from starlette.middleware.base import BaseHTTPMiddleware
-from uuid import UUID
-from auth.tenant_context import set_tenant_id
 import logging
+import jwt
+from uuid import UUID
+from fastapi import Request
+from fastapi.responses import JSONResponse
+from starlette.middleware.base import BaseHTTPMiddleware
+from auth.tenant_context import set_tenant_id
+from config import get_settings
 
 logger = logging.getLogger(__name__)
+settings = get_settings()
+
+PUBLIC_PATHS = {"/", "/docs", "/openapi.json", "/redoc", "/auth/token", "/health"}
+
 
 class TenantMiddleware(BaseHTTPMiddleware):
     """
-    Middleware that extracts the tenant_id from the 'X-Tenant-ID' header
-    and sets it in the request context.
+    Middleware que extrai o tenant_id do Bearer JWT e o define no contexto da requisição.
+    Rotas públicas definidas em PUBLIC_PATHS são isentas de autenticação.
     """
+
     async def dispatch(self, request: Request, call_next):
-        auth_header = request.headers.get("Authorization")
-        tenant_id_str = None
-        
-        # 1. Tenta extrair do JWT Token (API Gateway Level Security)
-        if auth_header and auth_header.startswith("Bearer "):
+        if request.url.path in PUBLIC_PATHS:
+            return await call_next(request)
+
+        auth_header = request.headers.get("Authorization", "")
+        tenant_id_str: str | None = None
+
+        if auth_header.startswith("Bearer "):
             token = auth_header.split(" ")[1]
             try:
-                from auth.jwt_handler import SECRET_KEY, ALGORITHM
-                import jwt
-                payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+                payload = jwt.decode(
+                    token,
+                    settings.jwt_secret_key,
+                    algorithms=[settings.jwt_algorithm],
+                )
                 tenant_id_str = payload.get("tenant_id")
-            except Exception as e:
-                logger.error(f"JWT Validation failed: {e}")
-                raise HTTPException(status_code=401, detail="Invalid or expired token")
+            except jwt.ExpiredSignatureError:
+                return JSONResponse(status_code=401, content={"detail": "Token expirado."})
+            except jwt.InvalidTokenError:
+                return JSONResponse(status_code=401, content={"detail": "Token inválido."})
 
-        # 2. Fallback para X-Tenant-ID (Somente em ambiente de testes/MVP)
-        if not tenant_id_str:
+        # Fallback: X-Tenant-ID somente em ambiente de desenvolvimento
+        if not tenant_id_str and settings.environment == "development":
             tenant_id_str = request.headers.get("X-Tenant-ID")
 
-        if tenant_id_str:
-            try:
-                tenant_id = UUID(tenant_id_str)
-                set_tenant_id(tenant_id)
-                logger.debug(f"Request tenant_id set to: {tenant_id}")
-            except ValueError:
-                raise HTTPException(status_code=400, detail="Invalid tenant format")
-        else:
-            # Em produção, rotas sem tenant_id dariam 401, mas para MVP permitimos passar para rotas públicas.
-            pass
+        if not tenant_id_str:
+            return JSONResponse(status_code=401, content={"detail": "Autenticação requerida."})
 
-        response = await call_next(request)
-        return response
+        try:
+            set_tenant_id(UUID(tenant_id_str))
+            logger.debug(f"[TENANT] tenant_id={tenant_id_str} path={request.url.path}")
+        except ValueError:
+            return JSONResponse(status_code=400, content={"detail": "Formato de tenant_id inválido (deve ser UUID)."})
+
+        return await call_next(request)
