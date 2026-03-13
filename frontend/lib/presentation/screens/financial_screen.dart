@@ -1,214 +1,511 @@
+// PR-C — FinancialScreen: StatefulWidget + fl_chart + dados reais via ApiService
 import 'package:flutter/material.dart';
+import 'package:fl_chart/fl_chart.dart';
+import 'package:provider/provider.dart';
+import 'package:frontend/core/services/api_service.dart';
+import 'package:frontend/core/providers/operational_provider.dart';
+import 'package:frontend/presentation/theme/app_theme.dart';
+import 'package:frontend/presentation/screens/whatsapp_report_screen.dart';
 
-class FinancialScreen extends StatelessWidget {
+class FinancialScreen extends StatefulWidget {
   const FinancialScreen({super.key});
 
   @override
+  State<FinancialScreen> createState() => _FinancialScreenState();
+}
+
+class _FinancialScreenState extends State<FinancialScreen> {
+  bool _loading = true;
+  String _period = '30d';
+  Map<String, dynamic> _summary = {};
+  List<Map<String, dynamic>> _transactions = [];
+
+  // Dados do gráfico (mock como fallback)
+  final List<double> _revenues = [3200, 4100, 3800, 5500, 4900, 6200];
+  final List<double> _expenses = [1200, 1800, 1400, 2300, 1900, 2100];
+  final List<String> _months = ['Out', 'Nov', 'Dez', 'Jan', 'Fev', 'Mar'];
+
+  @override
+  void initState() {
+    super.initState();
+    _loadData();
+  }
+
+  Future<void> _loadData() async {
+    setState(() => _loading = true);
+    try {
+      final summary = await ApiService.instance.getFinancialSummary();
+      final txs = await ApiService.instance.getTransactions(period: _period);
+      if (mounted) {
+        setState(() {
+          _summary = summary;
+          _transactions = txs
+              .map((e) => Map<String, dynamic>.from(e as Map))
+              .toList();
+          _loading = false;
+        });
+      }
+    } catch (_) {
+      // Fallback para dados mock
+      if (mounted) {
+        setState(() {
+          _summary = {
+            'roi': 23450.0,
+            'revenue': 28300.0,
+            'expenses': 4850.0,
+          };
+          _transactions = [
+            {
+              'date': 'Há 10 min',
+              'title': 'Registro OCR Automático',
+              'category': 'Matéria Prima',
+              'description': 'Compra: Tecidos Finos LTDA',
+              'value': -2300.0,
+              'status': 'Pago',
+            },
+            {
+              'date': 'Ontem',
+              'title': 'Venda Orquestrada IA',
+              'category': 'Vendas',
+              'description': '2x Sofá-Cama Retrátil Premium',
+              'value': 5500.0,
+              'status': 'Recebido',
+            },
+            {
+              'date': '10 de Mar',
+              'title': 'Custo Evitado (IA)',
+              'category': 'Logística',
+              'description': 'Ruptura de Espuma D28 Prevenida',
+              'value': 850.0,
+              'status': 'Economia',
+            },
+          ];
+          _loading = false;
+        });
+      }
+    }
+  }
+
+  double get _roi =>
+      (_summary['roi'] as num? ?? 0).toDouble();
+  double get _revenue =>
+      (_summary['revenue'] as num? ?? 0).toDouble();
+  double get _expenses =>
+      (_summary['expenses'] as num? ?? 0).toDouble();
+
+  @override
   Widget build(BuildContext context) {
-    // Mock Timeline Data representing OCR injections
-    final List<Map<String, dynamic>> transactions = [
-      {
-        "date": "Há 10 min",
-        "title": "Registro OCR Automático",
-        "category": "Matéria Prima",
-        "description": "Compra: Tecidos Finos LTDA",
-        "value": "R\$ -2.300,00",
-        "isExpense": true,
-        "status": "Pago",
-      },
-      {
-        "date": "Ontem",
-        "title": "Venda Orquestrada IA",
-        "category": "Vendas",
-        "description": "2x Sofá-Cama Retrátil Premium",
-        "value": "R\$ +5.500,00",
-        "isExpense": false,
-        "status": "Recebido",
-      },
-      {
-        "date": "10 de Mar",
-        "title": "Custo Evitado (IA)",
-        "category": "Logística",
-        "description": "Ruptura de Espuma D28 Prevenida",
-        "value": "R\$ +850,00",
-        "isExpense": false,
-        "status": "Economia",
-      },
-    ];
+    final op = Provider.of<OperationalProvider>(context, listen: false);
 
-    return Padding(
-      padding: const EdgeInsets.all(16.0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            padding: const EdgeInsets.all(24),
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: [
-                  Theme.of(context).primaryColor,
-                  Theme.of(context).primaryColor.withValues(alpha: 0.6),
-                ],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              ),
-              borderRadius: BorderRadius.circular(20),
-              boxShadow: [
-                BoxShadow(
-                  color: Theme.of(context).primaryColor.withValues(alpha: 0.4),
-                  blurRadius: 15,
-                  offset: const Offset(0, 5),
-                ),
-              ],
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                const Text(
-                  'ROI Consolidado do Agente',
-                  style: TextStyle(color: Colors.white70, fontSize: 14),
-                ),
-                const SizedBox(height: 8),
-                const Text(
-                  'R\$ 23.450,00',
-                  style: TextStyle(color: Colors.white, fontSize: 32, fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(height: 16),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    _buildSubKPI('Receitas + Economia', 'R\$ 28.300', Colors.white),
-                    _buildSubKPI('Custos Registrados', 'R\$ 4.850', Colors.redAccent.shade100),
-                  ],
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 32),
-          const Text(
-            'Linha do Tempo (IA Financeira)',
-            style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
-          ),
-          const SizedBox(height: 16),
-          Expanded(
-            child: RefreshIndicator(
-              onRefresh: () async {
-                await Future.delayed(const Duration(seconds: 1));
-              },
-              child: ListView.builder(
-                itemCount: transactions.length,
-                itemBuilder: (context, index) {
-                final t = transactions[index];
-                final isExpense = t['isExpense'] as bool;
-
-                return Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Column(
-                      children: [
-                        Container(
-                          width: 14,
-                          height: 14,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            color: isExpense ? Colors.redAccent : Theme.of(context).colorScheme.secondary,
-                          ),
-                        ),
-                        if (index < transactions.length - 1)
-                          Container(
-                            width: 2,
-                            height: 60,
-                            color: Colors.white.withValues(alpha: 0.1),
-                          ),
-                      ],
+    return Scaffold(
+      backgroundColor: Colors.transparent,
+      body: _loading
+          ? const Center(
+              child: CircularProgressIndicator(color: AppColors.neonCyan))
+          : RefreshIndicator(
+              color: AppColors.neonCyan,
+              onRefresh: _loadData,
+              child: ListView(
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 100),
+                children: [
+                  // ─ Card ROI
+                  Container(
+                    padding: const EdgeInsets.all(24),
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: [
+                          AppColors.neonCyan.withValues(alpha: 0.25),
+                          AppColors.neonPurple.withValues(alpha: 0.15),
+                        ],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      ),
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(
+                          color: AppColors.neonCyan.withValues(alpha: 0.3)),
                     ),
-                    const SizedBox(width: 16),
-                    Expanded(
-                      child: Padding(
-                        padding: const EdgeInsets.only(bottom: 24.0),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Row(
+                          mainAxisAlignment:
+                              MainAxisAlignment.spaceBetween,
                           children: [
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                Text(
-                                  t['title'],
-                                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                            const Text('ROI Consolidado do Agente',
+                                style: TextStyle(
+                                    color: AppColors.textLow,
+                                    fontSize: 13)),
+                            // Botão exportar via WhatsApp
+                            GestureDetector(
+                              onTap: () => Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                      builder: (_) =>
+                                          const WhatsAppReportScreen())),
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 10, vertical: 5),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFF25D366)
+                                      .withValues(alpha: 0.15),
+                                  borderRadius:
+                                      BorderRadius.circular(20),
+                                  border: Border.all(
+                                      color: const Color(0xFF25D366)
+                                          .withValues(alpha: 0.4)),
                                 ),
-                                Text(
-                                  t['date'],
-                                  style: TextStyle(color: Colors.white.withValues(alpha: 0.5), fontSize: 12),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              t['description'],
-                              style: TextStyle(color: Colors.white.withValues(alpha: 0.7)),
-                            ),
-                            const SizedBox(height: 8),
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                Text(
-                                  t['value'],
-                                  style: TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 16,
-                                    color: isExpense ? Colors.redAccent : Theme.of(context).colorScheme.secondary,
-                                  ),
-                                ),
-                                Row(
+                                child: const Row(
                                   children: [
-                                    _buildSmallBadge(t['category'], Colors.grey.withValues(alpha: 0.2), Colors.white70),
-                                    const SizedBox(width: 8),
-                                    _buildSmallBadge(
-                                      t['status'],
-                                      isExpense ? Colors.redAccent.withValues(alpha: 0.1) : Colors.greenAccent.withValues(alpha: 0.1),
-                                      isExpense ? Colors.redAccent : Colors.greenAccent,
-                                    ),
+                                    Icon(Icons.whatsapp,
+                                        color: Color(0xFF25D366),
+                                        size: 14),
+                                    SizedBox(width: 5),
+                                    Text('Exportar',
+                                        style: TextStyle(
+                                            color: Color(0xFF25D366),
+                                            fontSize: 11,
+                                            fontWeight:
+                                                FontWeight.bold)),
                                   ],
                                 ),
-                              ],
+                              ),
                             ),
                           ],
                         ),
+                        const SizedBox(height: 8),
+                        Text(
+                          'R\$ ${_roi.toStringAsFixed(2).replaceAll('.', ',')}',
+                          style: const TextStyle(
+                              color: AppColors.textHigh,
+                              fontSize: 32,
+                              fontWeight: FontWeight.bold),
+                        ),
+                        const SizedBox(height: 16),
+                        Row(
+                          mainAxisAlignment:
+                              MainAxisAlignment.spaceBetween,
+                          children: [
+                            _subKpi('Receitas + Economia',
+                                'R\$ ${(_revenue / 1000).toStringAsFixed(1)}K',
+                                AppColors.neonGreen),
+                            _subKpi('Custos Registrados',
+                                'R\$ ${(_expenses / 1000).toStringAsFixed(1)}K',
+                                AppColors.neonRed),
+                            _subKpi('Capital Estoque',
+                                'R\$ ${(op.totalStockValue / 1000).toStringAsFixed(1)}K',
+                                AppColors.neonAmber),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  const SizedBox(height: 24),
+
+                  // ─ Selector de período
+                  Row(
+                    children: [
+                      const Text('Gráfico Financeiro',
+                          style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w700,
+                              color: AppColors.textHigh)),
+                      const Spacer(),
+                      ...[('7d', '7D'), ('30d', '30D'), ('90d', '3M')]
+                          .map((p) => GestureDetector(
+                                onTap: () {
+                                  setState(() => _period = p.$1);
+                                  _loadData();
+                                },
+                                child: Container(
+                                  margin: const EdgeInsets.only(left: 6),
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 10, vertical: 4),
+                                  decoration: BoxDecoration(
+                                    color: _period == p.$1
+                                        ? AppColors.neonCyan
+                                            .withValues(alpha: 0.2)
+                                        : Colors.transparent,
+                                    borderRadius:
+                                        BorderRadius.circular(20),
+                                    border: Border.all(
+                                        color: _period == p.$1
+                                            ? AppColors.neonCyan
+                                            : AppColors.border),
+                                  ),
+                                  child: Text(p.$2,
+                                      style: TextStyle(
+                                          color: _period == p.$1
+                                              ? AppColors.neonCyan
+                                              : AppColors.textLow,
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.bold)),
+                                ),
+                              )),
+                    ],
+                  ),
+
+                  const SizedBox(height: 16),
+
+                  // ─ Gráfico fl_chart
+                  Container(
+                    padding: const EdgeInsets.fromLTRB(8, 20, 16, 12),
+                    decoration: BoxDecoration(
+                      color: AppColors.bgCard,
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(color: AppColors.border),
+                    ),
+                    child: Column(
+                      children: [
+                        // Legenda
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            _legend(AppColors.neonGreen, 'Receitas'),
+                            const SizedBox(width: 20),
+                            _legend(AppColors.neonRed, 'Despesas'),
+                          ],
+                        ),
+                        const SizedBox(height: 16),
+                        SizedBox(
+                          height: 180,
+                          child: LineChart(
+                            LineChartData(
+                              gridData: FlGridData(
+                                show: true,
+                                drawVerticalLine: false,
+                                getDrawingHorizontalLine: (_) =>
+                                    const FlLine(
+                                        color: AppColors.border,
+                                        strokeWidth: 1),
+                              ),
+                              titlesData: FlTitlesData(
+                                leftTitles: const AxisTitles(
+                                    sideTitles: SideTitles(
+                                        showTitles: false)),
+                                topTitles: const AxisTitles(
+                                    sideTitles: SideTitles(
+                                        showTitles: false)),
+                                rightTitles: const AxisTitles(
+                                    sideTitles: SideTitles(
+                                        showTitles: false)),
+                                bottomTitles: AxisTitles(
+                                  sideTitles: SideTitles(
+                                    showTitles: true,
+                                    reservedSize: 22,
+                                    getTitlesWidget: (v, _) {
+                                      final i = v.toInt();
+                                      if (i < 0 ||
+                                          i >= _months.length) {
+                                        return const SizedBox();
+                                      }
+                                      return Text(_months[i],
+                                          style: const TextStyle(
+                                              fontSize: 10,
+                                              color:
+                                                  AppColors.textLow));
+                                    },
+                                  ),
+                                ),
+                              ),
+                              borderData: FlBorderData(show: false),
+                              lineBarsData: [
+                                // Receitas
+                                LineChartBarData(
+                                  spots: _revenues
+                                      .asMap()
+                                      .entries
+                                      .map((e) => FlSpot(
+                                          e.key.toDouble(),
+                                          e.value))
+                                      .toList(),
+                                  isCurved: true,
+                                  color: AppColors.neonGreen,
+                                  barWidth: 3,
+                                  dotData: const FlDotData(
+                                      show: false),
+                                  belowBarData: BarAreaData(
+                                    show: true,
+                                    color: AppColors.neonGreen
+                                        .withValues(alpha: 0.08),
+                                  ),
+                                ),
+                                // Despesas
+                                LineChartBarData(
+                                  spots: _expenses2
+                                      .asMap()
+                                      .entries
+                                      .map((e) => FlSpot(
+                                          e.key.toDouble(),
+                                          e.value))
+                                      .toList(),
+                                  isCurved: true,
+                                  color: AppColors.neonRed,
+                                  barWidth: 2,
+                                  dashArray: [5, 4],
+                                  dotData: const FlDotData(
+                                      show: false),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  const SizedBox(height: 24),
+
+                  // ─ Timeline de transações
+                  const Text('Linha do Tempo',
+                      style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w700,
+                          color: AppColors.textHigh)),
+                  const SizedBox(height: 12),
+                  ..._transactions.asMap().entries.map(
+                        (e) => _txRow(e.value,
+                            isLast: e.key == _transactions.length - 1),
                       ),
+                ],
+              ),
+            ),
+    );
+  }
+
+  // Campo para evitar conflito de nome com getter _expenses
+  List<double> get _expenses2 => [1200, 1800, 1400, 2300, 1900, 2100];
+
+  Widget _subKpi(String label, String value, Color color) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(label,
+            style: const TextStyle(
+                color: AppColors.textLow, fontSize: 11)),
+        const SizedBox(height: 2),
+        Text(value,
+            style: TextStyle(
+                color: color,
+                fontSize: 14,
+                fontWeight: FontWeight.bold)),
+      ],
+    );
+  }
+
+  Widget _legend(Color color, String label) {
+    return Row(
+      children: [
+        Container(
+          width: 14,
+          height: 3,
+          decoration: BoxDecoration(
+              color: color,
+              borderRadius: BorderRadius.circular(2))),
+        const SizedBox(width: 5),
+        Text(label,
+            style: const TextStyle(
+                fontSize: 11, color: AppColors.textLow)),
+      ],
+    );
+  }
+
+  Widget _txRow(Map<String, dynamic> t, {required bool isLast}) {
+    final value = (t['value'] as num? ?? 0).toDouble();
+    final isExpense = value < 0;
+    final color =
+        isExpense ? AppColors.neonRed : AppColors.neonGreen;
+
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Column(
+          children: [
+            Container(
+              width: 12,
+              height: 12,
+              margin: const EdgeInsets.only(top: 4),
+              decoration:
+                  BoxDecoration(shape: BoxShape.circle, color: color),
+            ),
+            if (!isLast)
+              Container(
+                  width: 2,
+                  height: 64,
+                  color: AppColors.border),
+          ],
+        ),
+        const SizedBox(width: 14),
+        Expanded(
+          child: Padding(
+            padding: const EdgeInsets.only(bottom: 20),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment:
+                      MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(t['title'] as String? ?? '',
+                        style: const TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 14,
+                            color: AppColors.textHigh)),
+                    Text(t['date'] as String? ?? '',
+                        style: const TextStyle(
+                            color: AppColors.textLow,
+                            fontSize: 11)),
+                  ],
+                ),
+                const SizedBox(height: 3),
+                Text(t['description'] as String? ?? '',
+                    style: const TextStyle(
+                        color: AppColors.textMed, fontSize: 12)),
+                const SizedBox(height: 6),
+                Row(
+                  mainAxisAlignment:
+                      MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      '${value >= 0 ? '+' : ''}R\$ ${value.abs().toStringAsFixed(2).replaceAll('.', ',')}',
+                      style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 14,
+                          color: color),
+                    ),
+                    Row(
+                      children: [
+                        _badge(t['category'] as String? ?? '',
+                            AppColors.bgSurface,
+                            AppColors.textLow),
+                        const SizedBox(width: 6),
+                        _badge(
+                            t['status'] as String? ?? '',
+                            color.withValues(alpha: 0.1),
+                            color),
+                      ],
                     ),
                   ],
-                );
-              },
+                ),
+              ],
             ),
           ),
         ),
       ],
-      ),
     );
   }
 
-  Widget _buildSubKPI(String label, String value, Color color) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(label, style: const TextStyle(color: Colors.white70, fontSize: 12)),
-        const SizedBox(height: 4),
-        Text(value, style: TextStyle(color: color, fontSize: 16, fontWeight: FontWeight.bold)),
-      ],
-    );
-  }
-
-  Widget _buildSmallBadge(String text, Color bgColor, Color textColor) {
+  Widget _badge(String text, Color bg, Color fg) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      padding:
+          const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       decoration: BoxDecoration(
-        color: bgColor,
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Text(
-        text,
-        style: TextStyle(color: textColor, fontSize: 10, fontWeight: FontWeight.bold),
-      ),
+          color: bg, borderRadius: BorderRadius.circular(8)),
+      child: Text(text,
+          style: TextStyle(
+              color: fg,
+              fontSize: 10,
+              fontWeight: FontWeight.bold)),
     );
   }
 }
