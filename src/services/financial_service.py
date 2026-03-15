@@ -1,47 +1,33 @@
-"""Financial service: expense CRUD and financial summary (Gold Layer).
+"""Financial service — expense management and period summary.
 
-Anticipates Phase 8 of the roadmap by delivering core financial reporting
-as part of the MVP, aligned with market expectations.
+This service was anticipated from Roadmap Phase 8 to Phase 1 because
+financial visibility (gross margin, expense tracking) is a baseline
+expectation in any market-competitive inventory management SaaS.
 """
 import logging
 from datetime import date
-from uuid import UUID, uuid4
-from datetime import datetime
-from typing import List, Optional
+from uuid import UUID
 
 from fastapi import HTTPException
-from sqlalchemy import select, func
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from auth.tenant_context import get_tenant_id
-from models.entities import ExpenseSchema, ExpenseCategory, FinancialSummarySchema
+from db.orm_models import ExpenseORM, StockMovementORM
+from models.entities import ExpenseCategory, ExpenseSchema, FinancialSummarySchema, MovementType
 
 logger = logging.getLogger(__name__)
 
 
 class FinancialService:
-    """Manages financial records and reporting per tenant."""
 
-    def __init__(self, session: AsyncSession):
-        self.session = session
-
-    def _require_tenant(self) -> UUID:
-        tenant_id = get_tenant_id()
-        if not tenant_id:
-            raise HTTPException(status_code=403, detail="Tenant context missing")
-        return tenant_id
-
-    async def create_expense(self, data: ExpenseSchema) -> ExpenseSchema:
+    @staticmethod
+    async def create_expense(
+        data: ExpenseSchema,
+        session: AsyncSession,
+    ) -> ExpenseSchema:
         """Persists a new expense record."""
-        tenant_id = self._require_tenant()
-        if data.tenant_id != tenant_id:
-            raise HTTPException(status_code=403, detail="Tenant ID mismatch")
-
-        from db.orm_models import ExpenseORM
-
         orm = ExpenseORM(
-            id=uuid4(),
-            tenant_id=tenant_id,
+            tenant_id=data.tenant_id,
             user_id=data.user_id,
             value=data.value,
             category=data.category,
@@ -49,53 +35,31 @@ class FinancialService:
             description=data.description,
             reference_doc=data.reference_doc,
             expense_date=data.expense_date,
-            created_at=datetime.utcnow(),
         )
-        self.session.add(orm)
-        await self.session.flush()
-        logger.info(
-            "expense_created",
-            extra={
-                "tenant_id": str(tenant_id),
-                "value": data.value,
-                "category": data.category,
-            },
-        )
-        return ExpenseSchema.model_validate(orm)
+        session.add(orm)
+        await session.flush()
+        logger.info(f"expense_created tenant={data.tenant_id} value={data.value} category={data.category}")
+        return data.model_copy(update={"id": orm.id, "created_at": orm.created_at})
 
-    async def list_expenses(
-        self,
-        start_date: Optional[date] = None,
-        end_date: Optional[date] = None,
-        category: Optional[ExpenseCategory] = None,
-        limit: int = 100,
-        offset: int = 0,
-    ) -> List[ExpenseSchema]:
-        """Returns tenant-scoped expenses with optional date/category filters."""
-        tenant_id = self._require_tenant()
-        from db.orm_models import ExpenseORM
-
-        stmt = select(ExpenseORM).where(ExpenseORM.tenant_id == tenant_id)
-        if start_date:
-            stmt = stmt.where(ExpenseORM.expense_date >= start_date)
-        if end_date:
-            stmt = stmt.where(ExpenseORM.expense_date <= end_date)
-        if category:
-            stmt = stmt.where(ExpenseORM.category == category)
-        stmt = stmt.order_by(ExpenseORM.expense_date.desc()).limit(limit).offset(offset)
-
-        result = await self.session.execute(stmt)
-        return [ExpenseSchema.model_validate(row) for row in result.scalars().all()]
-
-    async def get_financial_summary(
-        self, period_start: date, period_end: date
+    @staticmethod
+    async def get_period_summary(
+        tenant_id: UUID,
+        period_start: date,
+        period_end: date,
+        session: AsyncSession,
     ) -> FinancialSummarySchema:
-        """Aggregates expenses and computes gross margin for the given period."""
-        tenant_id = self._require_tenant()
-        from db.orm_models import ExpenseORM, MovementORM
+        """Generates an aggregated financial summary for the given period.
 
-        # --- Total expenses ---
-        exp_result = await self.session.execute(
+        Returns:
+            - total_expenses broken down by category
+            - total stock entry/exit value (quantity-based proxy until unit price is added)
+            - gross_margin = total_exits_value - total_expenses
+        """
+        if period_start > period_end:
+            raise HTTPException(status_code=422, detail="period_start must be before period_end")
+
+        # --- Expenses aggregated by category ---
+        expense_rows = await session.execute(
             select(ExpenseORM.category, func.sum(ExpenseORM.value).label("total"))
             .where(
                 ExpenseORM.tenant_id == tenant_id,
@@ -104,34 +68,36 @@ class FinancialService:
             )
             .group_by(ExpenseORM.category)
         )
-        expenses_by_category: dict[str, float] = {}
-        total_expenses = 0.0
-        for row in exp_result:
-            expenses_by_category[row.category] = float(row.total)
-            total_expenses += float(row.total)
+        expenses_by_category: dict[str, float] = {
+            row.category.value: round(row.total, 2)
+            for row in expense_rows.fetchall()
+        }
+        total_expenses = round(sum(expenses_by_category.values()), 2)
 
-        # --- Movement values (entries vs exits) ---
-        # NOTE: Requires unit_value field on MovementORM (added in orm_models).
-        mov_result = await self.session.execute(
-            select(
-                MovementORM.type,
-                func.sum(MovementORM.quantity * MovementORM.unit_value).label("total_value"),
-            )
+        # --- Movement quantities by type (proxy for value until price is stored) ---
+        movement_rows = await session.execute(
+            select(StockMovementORM.type, func.sum(StockMovementORM.quantity).label("total"))
             .where(
-                MovementORM.tenant_id == tenant_id,
-                MovementORM.created_at >= datetime.combine(period_start, datetime.min.time()),
-                MovementORM.created_at <= datetime.combine(period_end, datetime.max.time()),
-                MovementORM.type.in_(["ENTRY", "EXIT"]),
+                StockMovementORM.tenant_id == tenant_id,
+                func.date(StockMovementORM.created_at) >= period_start,
+                func.date(StockMovementORM.created_at) <= period_end,
             )
-            .group_by(MovementORM.type)
+            .group_by(StockMovementORM.type)
         )
-        total_entries_value = 0.0
-        total_exits_value = 0.0
-        for row in mov_result:
-            if row.type == "ENTRY":
-                total_entries_value = float(row.total_value or 0)
-            elif row.type == "EXIT":
-                total_exits_value = float(row.total_value or 0)
+        movement_totals: dict[str, float] = {
+            row.type.value: round(row.total, 2)
+            for row in movement_rows.fetchall()
+        }
+
+        total_entries = movement_totals.get(MovementType.ENTRY.value, 0.0)
+        total_exits = movement_totals.get(MovementType.EXIT.value, 0.0)
+        gross_margin = round(total_exits - total_expenses, 2)
+
+        logger.info(
+            f"financial_summary tenant={tenant_id} "
+            f"period={period_start}/{period_end} "
+            f"expenses={total_expenses} margin={gross_margin}"
+        )
 
         return FinancialSummarySchema(
             tenant_id=tenant_id,
@@ -139,7 +105,7 @@ class FinancialService:
             period_end=period_end,
             total_expenses=total_expenses,
             expenses_by_category=expenses_by_category,
-            total_entries_value=total_entries_value,
-            total_exits_value=total_exits_value,
-            gross_margin=total_exits_value - total_expenses,
+            total_entries_value=total_entries,
+            total_exits_value=total_exits,
+            gross_margin=gross_margin,
         )

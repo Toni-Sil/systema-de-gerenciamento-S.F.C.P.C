@@ -1,112 +1,104 @@
-"""User service: registration, authentication, and tenant-scoped lookup.
+"""User registration and authentication service.
 
-Security contract:
-  - Passwords are NEVER stored or logged in plain text.
-  - Every created user is scoped to the current tenant (enforced by BaseRepository).
-  - Login is rate-limited upstream by RateLimiterMiddleware.
+Responsibilities:
+- Register new users with hashed passwords (bcrypt)
+- Authenticate credentials and issue JWT tokens
+- Enforce username/email uniqueness per tenant
 """
 import logging
-from uuid import UUID, uuid4
-from datetime import datetime
+from uuid import UUID
 
 from fastapi import HTTPException
-from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from auth.password_handler import hash_password, verify_password
 from auth.jwt_handler import create_jwt_token
-from auth.tenant_context import get_tenant_id
+from auth.password_handler import hash_password, verify_password
+from db.orm_models import UserORM
 from models.entities import UserCreateSchema, UserSchema
 
 logger = logging.getLogger(__name__)
 
 
 class UserService:
-    """Handles user lifecycle within a tenant."""
 
-    def __init__(self, session: AsyncSession):
-        self.session = session
-
-    async def register(self, data: UserCreateSchema) -> UserSchema:
-        """Creates a new user. Raises 409 if username or email already exists."""
-        tenant_id = get_tenant_id()
-        if not tenant_id:
-            raise HTTPException(status_code=403, detail="Tenant context missing")
-
-        # Import ORM model here to avoid circular imports at module level
-        from db.orm_models import UserORM
-
-        # Uniqueness check (username + email) scoped to tenant
-        duplicate = await self.session.execute(
+    @staticmethod
+    async def register(data: UserCreateSchema, session: AsyncSession) -> UserSchema:
+        """Creates a new user. Raises 409 if username or email already exist in the tenant."""
+        # Check uniqueness within the tenant
+        existing = await session.execute(
             select(UserORM).where(
-                UserORM.tenant_id == tenant_id,
-                (UserORM.username == data.username) | (UserORM.email == data.email),
+                UserORM.tenant_id == data.tenant_id,
+                UserORM.username == data.username,
             )
         )
-        if duplicate.scalar_one_or_none():
-            raise HTTPException(
-                status_code=409,
-                detail="Username or e-mail already registered for this tenant",
-            )
+        if existing.scalar_one_or_none():
+            raise HTTPException(status_code=409, detail="Username already exists for this tenant")
 
-        user_orm = UserORM(
-            id=uuid4(),
-            tenant_id=tenant_id,
+        existing_email = await session.execute(
+            select(UserORM).where(
+                UserORM.tenant_id == data.tenant_id,
+                UserORM.email == data.email,
+            )
+        )
+        if existing_email.scalar_one_or_none():
+            raise HTTPException(status_code=409, detail="Email already registered for this tenant")
+
+        orm_user = UserORM(
+            tenant_id=data.tenant_id,
             username=data.username,
             email=data.email,
-            role=data.role,
             hashed_password=hash_password(data.plain_password),
-            is_active=True,
-            created_at=datetime.utcnow(),
+            role=data.role,
         )
-        self.session.add(user_orm)
-        await self.session.flush()
+        session.add(orm_user)
+        await session.flush()
 
-        logger.info(
-            "user_registered",
-            extra={"tenant_id": str(tenant_id), "username": data.username, "role": data.role},
+        logger.info(f"user_registered tenant={data.tenant_id} user={orm_user.id} role={data.role}")
+
+        return UserSchema(
+            id=orm_user.id,
+            tenant_id=orm_user.tenant_id,
+            username=orm_user.username,
+            email=orm_user.email,
+            role=orm_user.role,
+            hashed_password=orm_user.hashed_password,
+            is_active=orm_user.is_active,
+            created_at=orm_user.created_at,
         )
-        return UserSchema.model_validate(user_orm)
 
-    async def authenticate(self, username: str, plain_password: str) -> dict:
-        """Validates credentials and returns a JWT access token payload.
-
-        Raises 401 on wrong username or password (generic message to prevent
-        username enumeration attacks).
+    @staticmethod
+    async def authenticate(
+        tenant_id: UUID,
+        username: str,
+        plain_password: str,
+        session: AsyncSession,
+    ) -> dict:
+        """Validates credentials and returns a JWT access token.
+        Raises 401 on any failure — never reveals whether username or password was wrong.
         """
-        tenant_id = get_tenant_id()
-        if not tenant_id:
-            raise HTTPException(status_code=403, detail="Tenant context missing")
-
-        from db.orm_models import UserORM
-
-        result = await self.session.execute(
+        result = await session.execute(
             select(UserORM).where(
                 UserORM.tenant_id == tenant_id,
                 UserORM.username == username,
                 UserORM.is_active == True,
             )
         )
-        user_orm = result.scalar_one_or_none()
+        user = result.scalar_one_or_none()
 
-        # Constant-time comparison even on missing user (prevents timing attack)
-        dummy_hash = "$2b$12$invalidhashfortimingsafety000000000000000000000"
-        stored_hash = user_orm.hashed_password if user_orm else dummy_hash
+        # Constant-time comparison: always verify even if user not found (prevents timing attacks)
+        dummy_hash = "$2b$12$invalidhashfortimingprotection000000000000000000000"
+        stored_hash = user.hashed_password if user else dummy_hash
+        password_ok = verify_password(plain_password, stored_hash)
 
-        if not verify_password(plain_password, stored_hash) or user_orm is None:
-            logger.warning(
-                "login_failed",
-                extra={"tenant_id": str(tenant_id), "username": username},
-            )
+        if not user or not password_ok:
+            logger.warning(f"auth_failed tenant={tenant_id} username={username}")
             raise HTTPException(status_code=401, detail="Invalid credentials")
 
         token = create_jwt_token(
-            tenant_id=str(tenant_id),
-            user_id=str(user_orm.id),
-            role=user_orm.role,
+            tenant_id=str(user.tenant_id),
+            user_id=str(user.id),
+            role=user.role.value,
         )
-        logger.info(
-            "login_success",
-            extra={"tenant_id": str(tenant_id), "user_id": str(user_orm.id)},
-        )
-        return {"access_token": token, "token_type": "bearer", "role": user_orm.role}
+        logger.info(f"auth_success tenant={tenant_id} user={user.id}")
+        return {"access_token": token, "token_type": "bearer"}
