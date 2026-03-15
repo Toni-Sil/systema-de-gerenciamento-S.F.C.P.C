@@ -1,47 +1,86 @@
-from typing import TypeVar, Generic, List, Optional, Type
-from uuid import UUID
-from pydantic import BaseModel
-from auth.tenant_context import get_tenant_id
-from fastapi import HTTPException
+"""Generic async repository with mandatory multi-tenancy enforcement.
 
-T = TypeVar("T", bound=BaseModel)
+All read/write operations automatically scope queries to the current tenant,
+preventing cross-tenant data leakage at the data access layer.
+"""
+from typing import Generic, List, Optional, Type, TypeVar
+from uuid import UUID
+
+from fastapi import HTTPException
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from auth.tenant_context import get_tenant_id
+from db.session import Base
+
+T = TypeVar("T", bound=Base)
+
 
 class BaseRepository(Generic[T]):
     """
-    Base repository that enforces multi-tenancy by automatically 
-    applying tenant_id filters.
-    """
-    def __init__(self, model: Type[T]):
-        self.model = model
-        # In a real implementation, this would hold a DB session (SQLAlchemy/Tortoise)
-        # For this MVP simulation/boilerplate, we use a mock in-memory storage
-        self._storage: List[T] = []
+    Tenant-scoped repository.
 
-    def _get_current_tenant_id(self) -> UUID:
+    Every query automatically adds a `WHERE tenant_id = <current_tenant>` clause.
+    This is the second layer of tenancy enforcement (the first being the middleware).
+    """
+
+    def __init__(self, model: Type[T], session: AsyncSession):
+        self.model = model
+        self.session = session
+
+    def _require_tenant(self) -> UUID:
         tenant_id = get_tenant_id()
         if not tenant_id:
             raise HTTPException(status_code=403, detail="Tenant context missing")
         return tenant_id
 
     async def create(self, data: T) -> T:
-        """Enforces tenant_id on creation."""
-        tenant_id = self._get_current_tenant_id()
-        # Ensure the data belongs to the current tenant
-        if hasattr(data, 'tenant_id') and data.tenant_id != tenant_id:
-             raise HTTPException(status_code=403, detail="Tenant ID mismatch")
-        
-        self._storage.append(data)
+        """Persists a new entity, enforcing tenant ownership."""
+        tenant_id = self._require_tenant()
+        if hasattr(data, "tenant_id") and data.tenant_id != tenant_id:
+            raise HTTPException(status_code=403, detail="Tenant ID mismatch on create")
+        self.session.add(data)
+        await self.session.flush()  # Populate auto-generated fields (id, created_at)
         return data
 
-    async def get_all(self) -> List[T]:
-        """Automatically filters by tenant_id."""
-        tenant_id = self._get_current_tenant_id()
-        return [item for item in self._storage if getattr(item, 'tenant_id', None) == tenant_id]
+    async def get_all(
+        self,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> List[T]:
+        """Returns all entities for the current tenant with pagination."""
+        tenant_id = self._require_tenant()
+        stmt = (
+            select(self.model)
+            .where(self.model.tenant_id == tenant_id)
+            .limit(limit)
+            .offset(offset)
+        )
+        result = await self.session.execute(stmt)
+        return list(result.scalars().all())
 
-    async def get_by_id(self, id: UUID) -> Optional[T]:
-        """Ensures the item belongs to the tenant."""
-        tenant_id = self._get_current_tenant_id()
-        for item in self._storage:
-            if getattr(item, 'id', None) == id and getattr(item, 'tenant_id', None) == tenant_id:
-                return item
-        return None
+    async def get_by_id(self, entity_id: UUID) -> Optional[T]:
+        """Fetches a single entity by ID, scoped to the current tenant."""
+        tenant_id = self._require_tenant()
+        stmt = select(self.model).where(
+            self.model.id == entity_id,
+            self.model.tenant_id == tenant_id,
+        )
+        result = await self.session.execute(stmt)
+        return result.scalar_one_or_none()
+
+    async def update(self, entity: T) -> T:
+        """Merges an updated entity back into the session."""
+        self._require_tenant()
+        merged = await self.session.merge(entity)
+        await self.session.flush()
+        return merged
+
+    async def delete(self, entity_id: UUID) -> bool:
+        """Soft-deletes by ID within the current tenant. Returns True if found."""
+        entity = await self.get_by_id(entity_id)
+        if entity is None:
+            return False
+        await self.session.delete(entity)
+        await self.session.flush()
+        return True
