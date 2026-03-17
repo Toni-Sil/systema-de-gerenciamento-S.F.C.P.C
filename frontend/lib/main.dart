@@ -1,4 +1,5 @@
 // SEC #4: AgendaProvider.init() chamado no bootstrap
+// v2: ThemeProvider integrado — dark/light persistido em SharedPreferences
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -9,17 +10,22 @@ import 'presentation/screens/onboarding_screen.dart';
 import 'core/providers/user_provider.dart';
 import 'core/providers/operational_provider.dart';
 import 'core/providers/agenda_provider.dart';
+import 'core/providers/theme_provider.dart';
 import 'core/services/offline_sync_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
+  // SystemUI inicial — sera atualizado pelo ThemeProvider apos init()
   SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
     statusBarColor: Colors.transparent,
     statusBarIconBrightness: Brightness.light,
-    systemNavigationBarColor: Color(0xFF1A1A1A),
+    systemNavigationBarColor: Colors.transparent,
     systemNavigationBarIconBrightness: Brightness.light,
   ));
+
+  // Barra de navegacao do sistema tambem transparente (funciona com extendBody)
+  SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
 
   await SystemChrome.setPreferredOrientations([
     DeviceOrientation.portraitUp,
@@ -31,9 +37,12 @@ void main() async {
   final userProvider = UserProvider();
   await userProvider.init();
 
-  // SEC #4: AgendaProvider inicializado no boot para carregar eventos e notificações
   final agendaProvider = AgendaProvider();
   await agendaProvider.init();
+
+  // ThemeProvider carrega preferencia salva antes do runApp
+  final themeProvider = ThemeProvider();
+  await themeProvider.init();
 
   final prefs = await SharedPreferences.getInstance();
   final onboardingDone = prefs.getBool('onboarding_done') ?? false;
@@ -43,6 +52,7 @@ void main() async {
       providers: [
         ChangeNotifierProvider.value(value: userProvider),
         ChangeNotifierProvider.value(value: agendaProvider),
+        ChangeNotifierProvider.value(value: themeProvider),
         ChangeNotifierProvider(create: (_) => OperationalProvider()),
       ],
       child: SFCpcApp(
@@ -64,10 +74,25 @@ class SFCpcApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final themeProvider = Provider.of<ThemeProvider>(context);
+    final isDark = themeProvider.isDark;
+
+    // Atualiza icones da status bar conforme o tema ativo
+    SystemChrome.setSystemUIOverlayStyle(SystemUiOverlayStyle(
+      statusBarColor: Colors.transparent,
+      statusBarIconBrightness:
+          isDark ? Brightness.light : Brightness.dark,
+      systemNavigationBarColor: Colors.transparent,
+      systemNavigationBarIconBrightness:
+          isDark ? Brightness.light : Brightness.dark,
+    ));
+
     return MaterialApp(
       title: 'S.F.C.P.C AI',
       debugShowCheckedModeBanner: false,
-      theme: AppTheme.darkTheme,
+      theme: AppTheme.lightTheme,
+      darkTheme: AppTheme.darkTheme,
+      themeMode: themeProvider.mode,
       home: showOnboarding
           ? OnboardingScreen(
               onFinished: () =>
