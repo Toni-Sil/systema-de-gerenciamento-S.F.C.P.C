@@ -1,4 +1,4 @@
-// ChatMessage model — substitui List<String> com role correto
+// FIX #3: text é nullable quando isLoading=true, evitando bubble vazio
 enum MessageRole { user, agent, system }
 
 class ChatMessage {
@@ -16,6 +16,10 @@ class ChatMessage {
 
   bool get isUser => role == MessageRole.user;
   bool get isAgent => role == MessageRole.agent;
+
+  /// FIX #3: text vazio só é válido quando isLoading=true.
+  /// Qualquer widget deve checar isLoading ANTES de acessar text.
+  bool get hasText => !isLoading && text.isNotEmpty;
 
   /// Mensagem de loading do agente (typing indicator)
   factory ChatMessage.typing() => ChatMessage(

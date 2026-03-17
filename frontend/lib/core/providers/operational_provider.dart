@@ -1,4 +1,4 @@
-// OperationalProvider refatorado — usa InventoryItem tipado + ApiService
+// FIX #2: erros de API em addItem/removeItem agora setam _errorMessage e notificam a UI
 import 'package:flutter/material.dart';
 import '../models/inventory_item.dart';
 import '../services/api_service.dart';
@@ -12,11 +12,15 @@ class OperationalProvider with ChangeNotifier {
   String _search = '';
   String? _categoryFilter;
 
-  // ─── Getters ───────────────────────────────────────────────────────────────
-
   ProviderStatus get status => _status;
   String? get errorMessage => _errorMessage;
   bool get isLoading => _status == ProviderStatus.loading;
+
+  void clearError() {
+    _errorMessage = null;
+    if (_status == ProviderStatus.error) _status = ProviderStatus.idle;
+    notifyListeners();
+  }
 
   List<InventoryItem> get items {
     var list = List<InventoryItem>.from(_items);
@@ -43,8 +47,6 @@ class OperationalProvider with ChangeNotifier {
 
   int get totalItems => _items.length;
 
-  // ─── Filtros ───────────────────────────────────────────────────────────────
-
   void setSearch(String query) {
     _search = query;
     notifyListeners();
@@ -54,8 +56,6 @@ class OperationalProvider with ChangeNotifier {
     _categoryFilter = category;
     notifyListeners();
   }
-
-  // ─── Dados mock para uso offline / fallback ────────────────────────────────
 
   void _loadMockData() {
     _items = [
@@ -95,8 +95,6 @@ class OperationalProvider with ChangeNotifier {
     ];
   }
 
-  // ─── API Actions ───────────────────────────────────────────────────────────
-
   Future<void> loadFromApi() async {
     _status = ProviderStatus.loading;
     _errorMessage = null;
@@ -112,21 +110,22 @@ class OperationalProvider with ChangeNotifier {
           .toList();
       _status = ProviderStatus.idle;
     } catch (_) {
-      // Fallback para mock se API indisponível
       _loadMockData();
       _status = ProviderStatus.idle;
     }
     notifyListeners();
   }
 
+  // FIX #2: seta _errorMessage se API falhar; dado local persiste (offline-first)
   Future<void> addItem(InventoryItem item) async {
-    try {
-      await ApiService.instance.addInventoryItem(item.toJson());
-    } catch (_) {
-      // offline: adiciona localmente, sync depois
-    }
     _items.add(item);
     notifyListeners();
+    try {
+      await ApiService.instance.addInventoryItem(item.toJson());
+    } catch (e) {
+      _errorMessage = 'Item salvo localmente. Sincronização pendente.';
+      notifyListeners();
+    }
   }
 
   Future<void> updateBalance(
@@ -143,18 +142,23 @@ class OperationalProvider with ChangeNotifier {
 
     try {
       await ApiService.instance.updateInventoryBalance(code, delta, reason);
-    } catch (_) {
-      // offline: será sincronizado pelo OfflineSyncService
+    } catch (e) {
+      _errorMessage = 'Saldo atualizado localmente. Sincronização pendente.';
+      notifyListeners();
     }
   }
 
+  // FIX #2: remove localmente e notifica erro de API sem reverter (offline-first)
   Future<void> removeItem(String code) async {
     _items.removeWhere(
         (i) => i.code.toUpperCase() == code.toUpperCase());
     notifyListeners();
     try {
       await ApiService.instance.deleteInventoryItem(code);
-    } catch (_) {}
+    } catch (e) {
+      _errorMessage = 'Remoção salva localmente. Sincronização pendente.';
+      notifyListeners();
+    }
   }
 
   bool exists(String code) =>

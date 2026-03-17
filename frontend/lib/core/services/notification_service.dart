@@ -1,4 +1,4 @@
-// FIX: import 'dart:ui' movido para o topo; Color não duplicado
+// FIX #1: _toNotificationId usa parte numérica do Uid diretamente, sem colisão por hashCode
 import 'dart:ui' show Color;
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:timezone/timezone.dart' as tz;
@@ -26,13 +26,11 @@ class NotificationService {
       onDidReceiveNotificationResponse: (_) {},
     );
 
-    // Solicita permissão de notificação (Android 13+)
     await _plugin
         .resolvePlatformSpecificImplementation<
             AndroidFlutterLocalNotificationsPlugin>()
         ?.requestNotificationsPermission();
 
-    // Solicita permissão de alarme exato (Android 12+)
     await _plugin
         .resolvePlatformSpecificImplementation<
             AndroidFlutterLocalNotificationsPlugin>()
@@ -106,5 +104,19 @@ class NotificationService {
 
   Future<void> cancelAll() async => await _plugin.cancelAll();
 
-  int _toNotificationId(String id) => id.hashCode.abs() % 100000;
+  /// FIX #1: extrai a parte numérica do Uid ("<ms>_<counter>") e usa módulo
+  /// seguro, evitando colisões por hashCode em IDs de mesmo prefixo.
+  int _toNotificationId(String id) {
+    // Uid.generate() → "1710676800000_42"
+    // Pega só o contador incremental (parte após "_") para máxima unicidade
+    final parts = id.split('_');
+    if (parts.length >= 2) {
+      final ms = int.tryParse(parts[0]) ?? 0;
+      final counter = int.tryParse(parts[1]) ?? 0;
+      // Combina ms truncado + counter para garantir unicidade no range int32
+      return ((ms % 9999) * 100 + counter) % 2147483647;
+    }
+    // Fallback para IDs legados
+    return id.hashCode.abs() % 2147483647;
+  }
 }

@@ -51,10 +51,11 @@ class AgendaProvider extends ChangeNotifier {
   int get todayCount => todayEvents.length;
   int get urgentCount => todayEvents.where((e) => e.isUrgent).length;
 
+  // FIX #4: _rescheduleAllNotifications agora é Future e awaited no init()
   Future<void> init() async {
     await _loadFromPrefs();
     await NotificationService.instance.init();
-    _rescheduleAllNotifications();
+    await _rescheduleAllNotifications();
   }
 
   void setSelectedDay(DateTime day) {
@@ -214,7 +215,6 @@ class AgendaProvider extends ChangeNotifier {
     if (title.length < 3) return null;
     title = title[0].toUpperCase() + title.substring(1);
 
-    // FIX #7: usa Uid.generate() para evitar colisao de IDs
     return AgendaEvent(
       id: Uid.generate(),
       title: title,
@@ -235,12 +235,18 @@ class AgendaProvider extends ChangeNotifier {
     return DateTime(date.year, date.month, date.day, hour, minute);
   }
 
-  void _rescheduleAllNotifications() {
+  // FIX #4: agora é Future<void> e cada notificação tem try/catch individual
+  Future<void> _rescheduleAllNotifications() async {
     for (final event in _events) {
       if (event.notifyBefore &&
           event.status == EventStatus.pendente &&
           !event.isPast) {
-        NotificationService.instance.scheduleEventNotification(event);
+        try {
+          await NotificationService.instance.scheduleEventNotification(event);
+        } catch (e) {
+          debugPrint(
+              '[AgendaProvider] falha ao reagendar notif ${event.id}: $e');
+        }
       }
     }
   }
