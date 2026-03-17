@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/agenda_event.dart';
 import '../services/notification_service.dart';
+import '../utils/uid.dart';
 
 class AgendaProvider extends ChangeNotifier {
   List<AgendaEvent> _events = [];
@@ -104,7 +105,6 @@ class AgendaProvider extends ChangeNotifier {
     notifyListeners();
     try {
       final trimmed = transcript.trim();
-      // FIX: valida transcript mínimo de 3 chars antes de parsear
       if (trimmed.length < 3) {
         _lastVoiceResult =
             'Não entendi. Tente: "Reunião com fornecedor amanhã às 14h"';
@@ -136,25 +136,21 @@ class AgendaProvider extends ChangeNotifier {
     final now = DateTime.now();
     DateTime eventDate;
 
-    // Hora: aceita "14h", "14:30", "14 horas", "14h30"
     final hourRegex =
         RegExp(r'(\d{1,2})h(oras?)?\s*(\d{2})?|(\d{1,2}):(\d{2})');
     final hourMatch = hourRegex.firstMatch(lower);
     if (hourMatch != null) {
       if (hourMatch.group(4) != null) {
-        // formato HH:MM
         hour = int.tryParse(hourMatch.group(4)!) ?? 9;
         minute = int.tryParse(hourMatch.group(5) ?? '0') ?? 0;
       } else {
         hour = int.tryParse(hourMatch.group(1)!) ?? 9;
         minute = int.tryParse(hourMatch.group(3) ?? '0') ?? 0;
       }
-      // Validação de range
       hour = hour.clamp(0, 23);
       minute = minute.clamp(0, 59);
     }
 
-    // Data
     if (lower.contains('hoje')) {
       eventDate = DateTime(now.year, now.month, now.day, hour, minute);
     } else if (lower.contains('amanhã') || lower.contains('amanha')) {
@@ -175,11 +171,9 @@ class AgendaProvider extends ChangeNotifier {
     } else if (lower.contains('domingo')) {
       eventDate = _nextWeekday(DateTime.sunday, hour, minute);
     } else {
-      // Sem data específica: assume hoje
       eventDate = DateTime(now.year, now.month, now.day, hour, minute);
     }
 
-    // Categoria
     EventCategory category = EventCategory.outro;
     EventPriority priority = EventPriority.normal;
 
@@ -206,7 +200,6 @@ class AgendaProvider extends ChangeNotifier {
       priority = EventPriority.urgente;
     }
 
-    // Título: remove palavras de contexto temporal
     String title = text
         .replaceAll(
           RegExp(
@@ -218,13 +211,12 @@ class AgendaProvider extends ChangeNotifier {
         .replaceAll(RegExp(r'\s{2,}'), ' ')
         .trim();
 
-    // FIX: rejeita títulos muito curtos ou vazios — retorna null para não criar lixo
     if (title.length < 3) return null;
-
     title = title[0].toUpperCase() + title.substring(1);
 
+    // FIX #7: usa Uid.generate() para evitar colisao de IDs
     return AgendaEvent(
-      id: DateTime.now().millisecondsSinceEpoch.toString(),
+      id: Uid.generate(),
       title: title,
       dateTime: eventDate,
       category: category,
@@ -270,7 +262,8 @@ class AgendaProvider extends ChangeNotifier {
       _events = list
           .map((s) {
             try {
-              return AgendaEvent.fromJson(jsonDecode(s) as Map<String, dynamic>);
+              return AgendaEvent.fromJson(
+                  jsonDecode(s) as Map<String, dynamic>);
             } catch (_) {
               return null;
             }

@@ -6,6 +6,7 @@ import 'package:frontend/core/models/chat_message.dart';
 import 'package:frontend/core/models/inventory_item.dart';
 import 'package:frontend/core/providers/user_provider.dart';
 import 'package:frontend/core/providers/operational_provider.dart';
+import 'package:frontend/core/providers/agenda_provider.dart';
 import 'package:frontend/core/services/api_service.dart';
 import 'package:frontend/presentation/screens/barcode_scanner_screen.dart';
 import 'package:frontend/presentation/theme/app_theme.dart';
@@ -30,8 +31,9 @@ class _AgentScreenState extends State<AgentScreen> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      final userProvider = Provider.of<UserProvider>(context, listen: false);
-      final opProvider = Provider.of<OperationalProvider>(context, listen: false);
+      if (!mounted) return;
+      final userProvider = context.read<UserProvider>();
+      final opProvider = context.read<OperationalProvider>();
       final lowStock = opProvider.lowStockItems.firstOrNull;
       setState(() {
         _messages.add(ChatMessage.greeting(
@@ -50,8 +52,6 @@ class _AgentScreenState extends State<AgentScreen> {
     super.dispose();
   }
 
-  // ─── Scroll ─────────────────────────────────────────────────────────────
-
   void _scrollToBottom() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (_scrollCtrl.hasClients) {
@@ -64,12 +64,14 @@ class _AgentScreenState extends State<AgentScreen> {
     });
   }
 
-  // ─── Enviar mensagem ao Agente (HTTP real) ───────────────────────────────
-
+  // FIX #1: injeta resumo da agenda como context no prompt do agente
   Future<void> _sendMessage(String text) async {
     if (text.trim().isEmpty || _isSending) return;
     _controller.clear();
     _focusNode.requestFocus();
+
+    // Captura contexto da agenda antes de qualquer await
+    final agendaSummary = context.read<AgendaProvider>().todaySummaryForAgent;
 
     setState(() {
       _messages.add(ChatMessage(
@@ -83,14 +85,17 @@ class _AgentScreenState extends State<AgentScreen> {
     _scrollToBottom();
 
     try {
-      final res = await ApiService.instance.sendAgentMessage(text.trim());
+      final res = await ApiService.instance.sendAgentMessage(
+        text.trim(),
+        context: agendaSummary,
+      );
       final reply = res['reply'] as String? ??
           res['message'] as String? ??
           'Entendido. Processando sua solicitação…';
 
       if (mounted) {
         setState(() {
-          _messages.removeLast(); // remove typing
+          _messages.removeLast();
           _messages.add(ChatMessage(
             text: reply,
             role: MessageRole.agent,
@@ -105,7 +110,8 @@ class _AgentScreenState extends State<AgentScreen> {
         setState(() {
           _messages.removeLast();
           _messages.add(ChatMessage(
-            text: 'Sem conexão com o servidor. Verifique a URL da API nas Configurações.',
+            text:
+                'Sem conexão com o servidor. Verifique a URL da API nas Configurações.',
             role: MessageRole.agent,
             timestamp: DateTime.now(),
           ));
@@ -116,22 +122,19 @@ class _AgentScreenState extends State<AgentScreen> {
     }
   }
 
-  // ─── Scanner de Código integrado ──────────────────────────────────────────
-
   void _openScanner() {
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => BarcodeScannerScreen(
           onDetected: (code) {
             HapticFeedback.mediumImpact();
-            _sendMessage('Escanei o código: $code. Qual é o status deste item no estoque?');
+            _sendMessage(
+                'Escanei o código: $code. Qual é o status deste item no estoque?');
           },
         ),
       ),
     );
   }
-
-  // ─── OCR / Anexo ───────────────────────────────────────────────────────
 
   void _showAttachmentMenu() {
     showModalBottomSheet(
@@ -140,17 +143,19 @@ class _AgentScreenState extends State<AgentScreen> {
       builder: (ctx) => Container(
         padding: const EdgeInsets.fromLTRB(24, 16, 24, 36),
         decoration: BoxDecoration(
-          color: Theme.of(ctx).colorScheme.surface.withValues(alpha: 0.97),
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+          color:
+              Theme.of(ctx).colorScheme.surface.withValues(alpha: 0.97),
+          borderRadius:
+              const BorderRadius.vertical(top: Radius.circular(28)),
           border: Border(
-              top: BorderSide(color: Colors.white.withValues(alpha: 0.1))),
+              top: BorderSide(
+                  color: Colors.white.withValues(alpha: 0.1))),
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             Container(
-              width: 40,
-              height: 4,
+              width: 40, height: 4,
               margin: const EdgeInsets.only(bottom: 20),
               decoration: BoxDecoration(
                   color: Colors.white.withValues(alpha: 0.2),
@@ -165,36 +170,30 @@ class _AgentScreenState extends State<AgentScreen> {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceEvenly,
               children: [
-                _attachOption(
-                  ctx,
-                  icon: Icons.qr_code_scanner,
-                  label: 'Escanear\nCódigo',
-                  color: AppColors.neonCyan,
-                  onTap: () {
-                    Navigator.pop(ctx);
-                    _openScanner();
-                  },
-                ),
-                _attachOption(
-                  ctx,
-                  icon: Icons.camera_alt,
-                  label: 'Nota Fiscal\nCâmera',
-                  color: AppColors.neonPurple,
-                  onTap: () {
-                    Navigator.pop(ctx);
-                    _processOcr(isDocument: false);
-                  },
-                ),
-                _attachOption(
-                  ctx,
-                  icon: Icons.attach_file,
-                  label: 'PDF /\nDocumento',
-                  color: AppColors.neonAmber,
-                  onTap: () {
-                    Navigator.pop(ctx);
-                    _processOcr(isDocument: true);
-                  },
-                ),
+                _attachOption(ctx,
+                    icon: Icons.qr_code_scanner,
+                    label: 'Escanear\nCódigo',
+                    color: AppColors.neonCyan,
+                    onTap: () {
+                      Navigator.pop(ctx);
+                      _openScanner();
+                    }),
+                _attachOption(ctx,
+                    icon: Icons.camera_alt,
+                    label: 'Nota Fiscal\nCâmera',
+                    color: AppColors.neonPurple,
+                    onTap: () {
+                      Navigator.pop(ctx);
+                      _processOcr(isDocument: false);
+                    }),
+                _attachOption(ctx,
+                    icon: Icons.attach_file,
+                    label: 'PDF /\nDocumento',
+                    color: AppColors.neonAmber,
+                    onTap: () {
+                      Navigator.pop(ctx);
+                      _processOcr(isDocument: true);
+                    }),
               ],
             ),
           ],
@@ -214,12 +213,12 @@ class _AgentScreenState extends State<AgentScreen> {
       child: Column(
         children: [
           Container(
-            width: 68,
-            height: 68,
+            width: 68, height: 68,
             decoration: BoxDecoration(
               color: color.withValues(alpha: 0.1),
               borderRadius: BorderRadius.circular(20),
-              border: Border.all(color: color.withValues(alpha: 0.35)),
+              border:
+                  Border.all(color: color.withValues(alpha: 0.35)),
             ),
             child: Icon(icon, color: color, size: 30),
           ),
@@ -235,22 +234,16 @@ class _AgentScreenState extends State<AgentScreen> {
     );
   }
 
-  // OCR simulado com resultado injetado no chat
   Future<void> _processOcr({required bool isDocument}) async {
     setState(() => _isProcessingOcr = true);
-
-    await Future.delayed(
-        Duration(seconds: isDocument ? 2 : 3)); // simula latência OCR
-
+    await Future.delayed(Duration(seconds: isDocument ? 2 : 3));
     if (!mounted) return;
     setState(() => _isProcessingOcr = false);
-
     _showOcrConfirmDialog(isDocument: isDocument);
   }
 
   void _showOcrConfirmDialog({required bool isDocument}) {
-    final opProvider =
-        Provider.of<OperationalProvider>(context, listen: false);
+    final opProvider = context.read<OperationalProvider>();
     const extractedCode = 'TECH-WH-01';
     const extractedDesc = 'Tecido White Tech 2026';
     const extractedQty = 100.0;
@@ -263,11 +256,14 @@ class _AgentScreenState extends State<AgentScreen> {
       builder: (ctx) => BackdropFilter(
         filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
         child: AlertDialog(
-          backgroundColor:
-              Theme.of(ctx).colorScheme.surface.withValues(alpha: 0.85),
+          backgroundColor: Theme.of(ctx)
+              .colorScheme
+              .surface
+              .withValues(alpha: 0.85),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(20),
-            side: BorderSide(color: Colors.white.withValues(alpha: 0.18)),
+            side: BorderSide(
+                color: Colors.white.withValues(alpha: 0.18)),
           ),
           title: Row(
             children: [
@@ -293,40 +289,41 @@ class _AgentScreenState extends State<AgentScreen> {
               _ocrRow('Quantidade', '$extractedQty $extractedUnit'),
               _ocrRow('Origem',
                   isDocument ? 'PDF / Nota Online' : 'Captura Câmera'),
-              if (!exists) ...
-                [
-                  const SizedBox(height: 12),
-                  Container(
-                    padding: const EdgeInsets.all(10),
-                    decoration: BoxDecoration(
-                      color: Colors.orangeAccent.withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(10),
-                      border: Border.all(
-                          color: Colors.orangeAccent.withValues(alpha: 0.3)),
-                    ),
-                    child: const Row(
-                      children: [
-                        Icon(Icons.warning_amber_rounded,
-                            color: Colors.orangeAccent, size: 16),
-                        SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            'Item não encontrado no estoque atual.',
-                            style: TextStyle(
-                                color: Colors.orangeAccent, fontSize: 11),
-                          ),
-                        ),
-                      ],
-                    ),
+              if (!exists) ...[
+                const SizedBox(height: 12),
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: Colors.orangeAccent.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(
+                        color:
+                            Colors.orangeAccent.withValues(alpha: 0.3)),
                   ),
-                ],
+                  child: const Row(
+                    children: [
+                      Icon(Icons.warning_amber_rounded,
+                          color: Colors.orangeAccent, size: 16),
+                      SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'Item não encontrado no estoque atual.',
+                          style: TextStyle(
+                              color: Colors.orangeAccent,
+                              fontSize: 11),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
               const SizedBox(height: 12),
               Text(
                 exists
                     ? 'Deseja dar entrada de $extractedQty $extractedUnit no saldo atual?'
                     : 'Deseja cadastrar este item automaticamente?',
-                style:
-                    const TextStyle(color: Colors.white70, fontSize: 13),
+                style: const TextStyle(
+                    color: Colors.white70, fontSize: 13),
               ),
             ],
           ),
@@ -338,9 +335,8 @@ class _AgentScreenState extends State<AgentScreen> {
             ),
             ElevatedButton(
               style: ElevatedButton.styleFrom(
-                backgroundColor: exists
-                    ? AppColors.neonCyan
-                    : Colors.orangeAccent,
+                backgroundColor:
+                    exists ? AppColors.neonCyan : Colors.orangeAccent,
                 foregroundColor: AppColors.bgDeep,
               ),
               onPressed: () {
@@ -364,7 +360,8 @@ class _AgentScreenState extends State<AgentScreen> {
                 }
               },
               child: Text(exists ? 'Dar Entrada' : 'Cadastrar',
-                  style: const TextStyle(fontWeight: FontWeight.bold)),
+                  style:
+                      const TextStyle(fontWeight: FontWeight.bold)),
             ),
           ],
         ),
@@ -393,6 +390,7 @@ class _AgentScreenState extends State<AgentScreen> {
   }
 
   void _addAgentMessage(String text) {
+    if (!mounted) return;
     setState(() {
       _messages.add(ChatMessage(
         text: text,
@@ -403,13 +401,10 @@ class _AgentScreenState extends State<AgentScreen> {
     _scrollToBottom();
   }
 
-  // ─── Build ────────────────────────────────────────────────────────────────
-
   @override
   Widget build(BuildContext context) {
     return Column(
       children: [
-        // Lista de mensagens
         Expanded(
           child: ListView.builder(
             controller: _scrollCtrl,
@@ -418,33 +413,25 @@ class _AgentScreenState extends State<AgentScreen> {
             itemBuilder: (ctx, i) => _buildBubble(_messages[i]),
           ),
         ),
-
-        // Indicador OCR
         if (_isProcessingOcr)
           Container(
             padding:
                 const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             color: AppColors.bgSurface,
-            child: Row(
+            child: const Row(
               children: [
-                const SizedBox(
-                  width: 16,
-                  height: 16,
+                SizedBox(
+                  width: 16, height: 16,
                   child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      color: AppColors.neonCyan),
+                      strokeWidth: 2, color: AppColors.neonCyan),
                 ),
-                const SizedBox(width: 12),
-                Text(
-                  'Processando OCR com IA…',
-                  style: const TextStyle(
-                      color: AppColors.neonCyan, fontSize: 12),
-                ),
+                SizedBox(width: 12),
+                Text('Processando OCR com IA…',
+                    style: TextStyle(
+                        color: AppColors.neonCyan, fontSize: 12)),
               ],
             ),
           ),
-
-        // Barra de input
         Container(
           padding: const EdgeInsets.fromLTRB(8, 8, 8, 12),
           decoration: BoxDecoration(
@@ -455,14 +442,13 @@ class _AgentScreenState extends State<AgentScreen> {
           ),
           child: Row(
             children: [
-              // Botão anexo
               IconButton(
-                icon: const Icon(Icons.add_circle_outline, size: 26),
+                icon:
+                    const Icon(Icons.add_circle_outline, size: 26),
                 color: AppColors.neonCyan,
                 onPressed: _showAttachmentMenu,
                 tooltip: 'Anexar',
               ),
-              // TextField
               Expanded(
                 child: TextField(
                   controller: _controller,
@@ -472,19 +458,17 @@ class _AgentScreenState extends State<AgentScreen> {
                   decoration: const InputDecoration(
                     hintText: 'Perguntar ao Agente…',
                     border: InputBorder.none,
-                    contentPadding:
-                        EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    contentPadding: EdgeInsets.symmetric(
+                        horizontal: 12, vertical: 10),
                   ),
                 ),
               ),
-              // Botão enviar
               AnimatedSwitcher(
                 duration: const Duration(milliseconds: 200),
                 child: _isSending
                     ? const SizedBox(
                         key: ValueKey('loading'),
-                        width: 24,
-                        height: 24,
+                        width: 24, height: 24,
                         child: Padding(
                           padding: EdgeInsets.all(4),
                           child: CircularProgressIndicator(
@@ -494,9 +478,10 @@ class _AgentScreenState extends State<AgentScreen> {
                       )
                     : IconButton(
                         key: const ValueKey('send'),
-                        icon:
-                            const Icon(Icons.send, color: AppColors.neonCyan),
-                        onPressed: () => _sendMessage(_controller.text),
+                        icon: const Icon(Icons.send,
+                            color: AppColors.neonCyan),
+                        onPressed: () =>
+                            _sendMessage(_controller.text),
                       ),
               ),
             ],
@@ -506,17 +491,14 @@ class _AgentScreenState extends State<AgentScreen> {
     );
   }
 
-  // ─── Bubble ─────────────────────────────────────────────────────────────────
-
   Widget _buildBubble(ChatMessage msg) {
     if (msg.isLoading) return _buildTypingIndicator();
-
     final isUser = msg.isUser;
     final time =
         '${msg.timestamp.hour.toString().padLeft(2, '0')}:${msg.timestamp.minute.toString().padLeft(2, '0')}';
-
     return Align(
-      alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
+      alignment:
+          isUser ? Alignment.centerRight : Alignment.centerLeft,
       child: Container(
         margin: const EdgeInsets.only(bottom: 10),
         constraints: BoxConstraints(
@@ -526,44 +508,45 @@ class _AgentScreenState extends State<AgentScreen> {
             const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
         decoration: BoxDecoration(
           color: isUser
-              ? Theme.of(context).primaryColor.withValues(alpha: 0.85)
+              ? Theme.of(context)
+                  .primaryColor
+                  .withValues(alpha: 0.85)
               : Theme.of(context).colorScheme.surface,
           borderRadius: BorderRadius.only(
             topLeft: const Radius.circular(18),
             topRight: const Radius.circular(18),
-            bottomLeft:
-                isUser ? const Radius.circular(18) : Radius.zero,
-            bottomRight:
-                isUser ? Radius.zero : const Radius.circular(18),
+            bottomLeft: isUser
+                ? const Radius.circular(18)
+                : Radius.zero,
+            bottomRight: isUser
+                ? Radius.zero
+                : const Radius.circular(18),
           ),
           border: isUser
               ? null
               : Border.all(
-                  color: AppColors.neonCyan.withValues(alpha: 0.15)),
+                  color:
+                      AppColors.neonCyan.withValues(alpha: 0.15)),
         ),
         child: Column(
           crossAxisAlignment: isUser
               ? CrossAxisAlignment.end
               : CrossAxisAlignment.start,
           children: [
-            Text(
-              msg.text,
-              style: TextStyle(
-                color: isUser ? Colors.white : Colors.white70,
-                fontSize: 14,
-                height: 1.45,
-              ),
-            ),
+            Text(msg.text,
+                style: TextStyle(
+                  color: isUser ? Colors.white : Colors.white70,
+                  fontSize: 14,
+                  height: 1.45,
+                )),
             const SizedBox(height: 4),
-            Text(
-              time,
-              style: TextStyle(
-                fontSize: 10,
-                color: isUser
-                    ? Colors.white.withValues(alpha: 0.5)
-                    : AppColors.textLow,
-              ),
-            ),
+            Text(time,
+                style: TextStyle(
+                  fontSize: 10,
+                  color: isUser
+                      ? Colors.white.withValues(alpha: 0.5)
+                      : AppColors.textLow,
+                )),
           ],
         ),
       ),
@@ -591,7 +574,8 @@ class _AgentScreenState extends State<AgentScreen> {
           mainAxisSize: MainAxisSize.min,
           children: List.generate(
             3,
-            (i) => _BouncingDot(delay: Duration(milliseconds: i * 150)),
+            (i) => _BouncingDot(
+                delay: Duration(milliseconds: i * 180)),
           ),
         ),
       ),
@@ -599,7 +583,7 @@ class _AgentScreenState extends State<AgentScreen> {
   }
 }
 
-// Typing indicator animado
+// FIX #3: _BouncingDot sem repeat+forward conflitantes
 class _BouncingDot extends StatefulWidget {
   final Duration delay;
   const _BouncingDot({required this.delay});
@@ -617,12 +601,14 @@ class _BouncingDotState extends State<_BouncingDot>
   void initState() {
     super.initState();
     _ctrl = AnimationController(
-        vsync: this, duration: const Duration(milliseconds: 600))
-      ..repeat(reverse: true);
+      vsync: this,
+      duration: const Duration(milliseconds: 600),
+    );
     _anim = Tween<double>(begin: 0, end: -6).animate(
         CurvedAnimation(parent: _ctrl, curve: Curves.easeInOut));
+    // FIX: inicia delayed sem chamar forward() depois de repeat()
     Future.delayed(widget.delay, () {
-      if (mounted) _ctrl.forward();
+      if (mounted) _ctrl.repeat(reverse: true);
     });
   }
 
@@ -639,8 +625,7 @@ class _BouncingDotState extends State<_BouncingDot>
       builder: (_, __) => Container(
         margin: const EdgeInsets.symmetric(horizontal: 3),
         transform: Matrix4.translationValues(0, _anim.value, 0),
-        width: 7,
-        height: 7,
+        width: 7, height: 7,
         decoration: BoxDecoration(
           color: AppColors.neonCyan.withValues(alpha: 0.7),
           shape: BoxShape.circle,
