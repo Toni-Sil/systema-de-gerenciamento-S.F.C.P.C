@@ -2,11 +2,13 @@
 // SEC #2: valida campo 'exp' do JWT antes de autenticar
 // SEC #5: login distingue AuthException de erros de rede
 // SEC #6: updateProfile só executa se _isAuthenticated
+// FIX #2: logout chama OfflineSyncService.clearAll() para limpar dados Hive do usuário
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import '../models/user_model.dart';
 import '../services/api_service.dart';
 import '../services/secure_storage_service.dart';
+import '../services/offline_sync_service.dart';
 
 enum LoginError { none, invalidCredentials, networkError, sessionExpired }
 
@@ -29,14 +31,10 @@ class UserProvider with ChangeNotifier {
 
   Future<void> init() async {
     await ApiService.instance.init();
-    // SEC #1: lê do secure storage
-    final userJson =
-        await SecureStorageService.instance.readUserData();
+    final userJson = await SecureStorageService.instance.readUserData();
     if (userJson != null && ApiService.instance.hasToken) {
       try {
-        final claims =
-            jsonDecode(userJson) as Map<String, dynamic>;
-        // SEC #2: verifica expiração
+        final claims = jsonDecode(userJson) as Map<String, dynamic>;
         if (!_isTokenExpired(claims)) {
           _user = UserModel.fromJwtClaims(claims);
           _isAuthenticated = true;
@@ -52,7 +50,6 @@ class UserProvider with ChangeNotifier {
     }
   }
 
-  // SEC #5: distingue InvalidCredentials x Rede x Expirado
   Future<bool> login(String email, String password) async {
     _lastLoginError = LoginError.none;
     try {
@@ -62,21 +59,17 @@ class UserProvider with ChangeNotifier {
 
       final parts = token.split('.');
       if (parts.length == 3) {
-        final payload = utf8.decode(
-            base64Url.decode(base64Url.normalize(parts[1])));
-        final claims =
-            jsonDecode(payload) as Map<String, dynamic>;
+        final payload =
+            utf8.decode(base64Url.decode(base64Url.normalize(parts[1])));
+        final claims = jsonDecode(payload) as Map<String, dynamic>;
 
-        // SEC #2: verifica exp antes de aceitar o token
         if (_isTokenExpired(claims)) {
           _lastLoginError = LoginError.sessionExpired;
           return false;
         }
 
         _user = UserModel.fromJwtClaims(claims);
-        // SEC #1: salva no secure storage
-        await SecureStorageService.instance
-            .writeUserData(jsonEncode(claims));
+        await SecureStorageService.instance.writeUserData(jsonEncode(claims));
       }
 
       _isAuthenticated = true;
@@ -99,11 +92,11 @@ class UserProvider with ChangeNotifier {
     await _clearSession();
   }
 
-  // SEC #6: guard isAuthenticated
   Future<void> updateProfile(String name, String company,
       {String? imageUrl}) async {
     if (!_isAuthenticated) {
-      debugPrint('[UserProvider] updateProfile bloqueado: usuário não autenticado');
+      debugPrint(
+          '[UserProvider] updateProfile bloqueado: usuário não autenticado');
       return;
     }
     _user = UserModel(
@@ -115,25 +108,27 @@ class UserProvider with ChangeNotifier {
       profileImageUrl: imageUrl ?? _user.profileImageUrl,
     );
     notifyListeners();
-    // SEC #1: persiste no secure storage
-    await SecureStorageService.instance
-        .writeUserData(jsonEncode(_user.toJson()));
+    await SecureStorageService.instance.writeUserData(jsonEncode(_user.toJson()));
   }
 
-  // ─── Helpers ───────────────────────────────────────────────────────────────
+  // ─── Helpers ─────────────────────────────────────────────────────────────
 
-  /// SEC #2: retorna true se o campo 'exp' do JWT já passou
   bool _isTokenExpired(Map<String, dynamic> claims) {
     final exp = claims['exp'];
-    if (exp == null) return false; // sem exp = sem validade definida
-    final expiry =
-        DateTime.fromMillisecondsSinceEpoch((exp as int) * 1000);
+    if (exp == null) return false;
+    final expiry = DateTime.fromMillisecondsSinceEpoch((exp as int) * 1000);
     return DateTime.now().isAfter(expiry);
   }
 
+  // FIX #2: limpa Hive local além de JWT e SecureStorage
   Future<void> _clearSession() async {
     await ApiService.instance.clearToken();
     await SecureStorageService.instance.deleteUserData();
+    try {
+      await OfflineSyncService.clearAll();
+    } catch (e) {
+      debugPrint('[UserProvider] clearAll Hive error: $e');
+    }
     _user = UserModel.guest();
     _isAuthenticated = false;
     notifyListeners();

@@ -1,4 +1,5 @@
-// HomeScreen — com Agenda integrada (Sprint 5)
+// FIX #1: removido AgendaProvider.init() duplicado do initState
+// (já chamado no main.dart antes do runApp)
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:frontend/core/providers/user_provider.dart';
@@ -40,13 +41,10 @@ class _HomeScreenState extends State<HomeScreen> {
     SettingsScreen(),
   ];
 
+  // FIX #1: initState limpo — AgendaProvider já inicializado no main()
   @override
   void initState() {
     super.initState();
-    // Inicializa agenda (notificações + dados salvos)
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      context.read<AgendaProvider>().init();
-    });
   }
 
   @override
@@ -182,7 +180,6 @@ class _HomeScreenState extends State<HomeScreen> {
               activeIcon: Icon(Icons.account_balance_wallet),
               label: 'Financeiro',
             ),
-            // Agenda com badge de eventos do dia
             BottomNavigationBarItem(
               icon: todayEvents > 0
                   ? Badge(

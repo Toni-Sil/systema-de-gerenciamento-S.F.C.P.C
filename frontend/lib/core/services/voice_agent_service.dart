@@ -1,8 +1,8 @@
+// FIX #3: Future orfão do timeout cancelado com flag _timeoutFired
 import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:speech_to_text/speech_to_text.dart';
 
-/// Serviço de reconhecimento de voz — singleton seguro com Completer real.
 class VoiceAgentService extends ChangeNotifier {
   VoiceAgentService._();
   static final VoiceAgentService instance = VoiceAgentService._();
@@ -12,35 +12,29 @@ class VoiceAgentService extends ChangeNotifier {
   bool _isListening = false;
   String _lastWords = '';
   Completer<String>? _completer;
+  // FIX #3: timer explícito para cancelar o timeout se já completado
+  Timer? _timeoutTimer;
 
   bool get isListening => _isListening;
   bool get isAvailable => _isAvailable;
   String get lastWords => _lastWords;
 
-  // FIX #6: nunca guarda _isAvailable=true se falhou;
-  // reseta para false para permitir nova tentativa após falha de permissão
   Future<bool> init() async {
     if (_isAvailable) return true;
-    _isAvailable = false; // garante estado limpo antes de tentar
+    _isAvailable = false;
     try {
       _isAvailable = await _speech.initialize(
         onError: (error) {
           debugPrint('[VoiceAgentService] error: $error');
-          _isAvailable = false; // reseta para permitir retry
+          _isAvailable = false;
           _setListening(false);
-          if (!(_completer?.isCompleted ?? true)) {
-            _completer!.complete(_lastWords);
-            _completer = null;
-          }
+          _resolveCompleter(_lastWords);
         },
         onStatus: (status) {
           debugPrint('[VoiceAgentService] status: $status');
           if (status == 'done' || status == 'notListening') {
             _setListening(false);
-            if (!(_completer?.isCompleted ?? true)) {
-              _completer!.complete(_lastWords);
-              _completer = null;
-            }
+            _resolveCompleter(_lastWords);
           }
         },
       );
@@ -73,21 +67,16 @@ class VoiceAgentService extends ChangeNotifier {
         if (onPartial != null) onPartial(_lastWords);
         if (result.finalResult) {
           _setListening(false);
-          if (!(_completer?.isCompleted ?? true)) {
-            _completer!.complete(_lastWords);
-            _completer = null;
-          }
+          _resolveCompleter(_lastWords);
         }
       },
     );
 
-    // Timeout de segurança
-    Future.delayed(timeout + const Duration(seconds: 2), () {
-      if (!(_completer?.isCompleted ?? true)) {
-        _completer!.complete(_lastWords);
-        _completer = null;
-        _setListening(false);
-      }
+    // FIX #3: Timer cancelado explicitamente se completer já resolveu antes
+    _timeoutTimer?.cancel();
+    _timeoutTimer = Timer(timeout + const Duration(seconds: 2), () {
+      _setListening(false);
+      _resolveCompleter(_lastWords);
     });
 
     final result = await _completer!.future;
@@ -97,25 +86,29 @@ class VoiceAgentService extends ChangeNotifier {
   Future<void> stop() async {
     await _speech.stop();
     _setListening(false);
-    if (!(_completer?.isCompleted ?? true)) {
-      _completer!.complete(_lastWords);
-      _completer = null;
-    }
+    _resolveCompleter(_lastWords);
   }
 
   Future<void> cancel() async {
     await _speech.cancel();
     _lastWords = '';
     _setListening(false);
-    if (!(_completer?.isCompleted ?? true)) {
-      _completer!.complete('');
-      _completer = null;
-    }
+    _resolveCompleter('');
   }
 
   void _setListening(bool value) {
     if (_isListening == value) return;
     _isListening = value;
     notifyListeners();
+  }
+
+  /// Helper centralizado para resolver o Completer e cancelar o timer
+  void _resolveCompleter(String value) {
+    _timeoutTimer?.cancel();
+    _timeoutTimer = null;
+    if (!(_completer?.isCompleted ?? true)) {
+      _completer!.complete(value);
+      _completer = null;
+    }
   }
 }
