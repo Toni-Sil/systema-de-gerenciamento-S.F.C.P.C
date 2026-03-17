@@ -1,10 +1,12 @@
-// PR-D — HomeScreen: AppBar dinâmica com nome/avatar do UserProvider, badge de alerta, título por aba
+// HomeScreen — com Agenda integrada (Sprint 5)
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:frontend/core/providers/user_provider.dart';
 import 'package:frontend/core/providers/operational_provider.dart';
+import 'package:frontend/core/providers/agenda_provider.dart';
 import 'package:frontend/presentation/theme/app_theme.dart';
 import 'agent_screen.dart';
+import 'agenda_screen.dart';
 import 'dashboard_screen.dart';
 import 'operational_screen.dart';
 import 'financial_screen.dart';
@@ -25,26 +27,38 @@ class _HomeScreenState extends State<HomeScreen> {
     'Indicadores',
     'Operacional',
     'Financeiro',
+    'Agenda',
     'Governança',
   ];
 
-  final List<Widget> _screens = [
-    const AgentScreen(),
-    const DashboardScreen(),
-    const OperationalScreen(),
-    const FinancialScreen(),
-    const SettingsScreen(),
+  final List<Widget> _screens = const [
+    AgentScreen(),
+    DashboardScreen(),
+    OperationalScreen(),
+    FinancialScreen(),
+    AgendaScreen(),
+    SettingsScreen(),
   ];
+
+  @override
+  void initState() {
+    super.initState();
+    // Inicializa agenda (notificações + dados salvos)
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      context.read<AgendaProvider>().init();
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
     final userProvider = Provider.of<UserProvider>(context);
     final opProvider = Provider.of<OperationalProvider>(context);
+    final agendaProvider = Provider.of<AgendaProvider>(context);
     final alertCount = opProvider.lowStockItems.length;
+    final todayEvents = agendaProvider.todayCount;
 
     return Scaffold(
       appBar: AppBar(
-        // Título muda conforme aba
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -57,13 +71,11 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
             Text(
               userProvider.companyName,
-              style: const TextStyle(
-                  fontSize: 11, color: AppColors.textLow),
+              style: const TextStyle(fontSize: 11, color: AppColors.textLow),
             ),
           ],
         ),
         actions: [
-          // Badge de alertas de reposicão
           if (alertCount > 0)
             Padding(
               padding: const EdgeInsets.only(right: 4),
@@ -73,8 +85,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   IconButton(
                     icon: const Icon(Icons.notifications_outlined,
                         color: AppColors.textLow),
-                    onPressed: () =>
-                        setState(() => _currentIndex = 2), // vai para Operacional
+                    onPressed: () => setState(() => _currentIndex = 2),
                     tooltip: '$alertCount itens para repor',
                   ),
                   Positioned(
@@ -101,24 +112,20 @@ class _HomeScreenState extends State<HomeScreen> {
                 ],
               ),
             ),
-          // Avatar
           GestureDetector(
-            onTap: () => setState(() => _currentIndex = 4),
+            onTap: () => setState(() => _currentIndex = 5),
             child: Padding(
               padding: const EdgeInsets.only(right: 16),
               child: CircleAvatar(
                 radius: 18,
-                backgroundImage:
-                    NetworkImage(userProvider.profileImageUrl),
-                backgroundColor:
-                    AppColors.neonCyan.withValues(alpha: 0.2),
+                backgroundImage: NetworkImage(userProvider.profileImageUrl),
+                backgroundColor: AppColors.neonCyan.withValues(alpha: 0.2),
               ),
             ),
           ),
         ],
         elevation: 0,
-        backgroundColor:
-            Theme.of(context).scaffoldBackgroundColor,
+        backgroundColor: Theme.of(context).scaffoldBackgroundColor,
         surfaceTintColor: Colors.transparent,
       ),
       body: IndexedStack(
@@ -143,8 +150,8 @@ class _HomeScreenState extends State<HomeScreen> {
           selectedItemColor: AppColors.neonCyan,
           unselectedItemColor: Colors.white38,
           showUnselectedLabels: true,
-          selectedLabelStyle: const TextStyle(
-              fontWeight: FontWeight.bold, fontSize: 12),
+          selectedLabelStyle:
+              const TextStyle(fontWeight: FontWeight.bold, fontSize: 11),
           unselectedLabelStyle: const TextStyle(fontSize: 10),
           items: [
             const BottomNavigationBarItem(
@@ -157,19 +164,16 @@ class _HomeScreenState extends State<HomeScreen> {
               activeIcon: Icon(Icons.bar_chart),
               label: 'Indicadores',
             ),
-            // Badge no item Operacional se houver alertas
             BottomNavigationBarItem(
               icon: alertCount > 0
                   ? Badge(
                       label: Text('$alertCount'),
-                      child: const Icon(Icons.inventory_2_outlined),
-                    )
+                      child: const Icon(Icons.inventory_2_outlined))
                   : const Icon(Icons.inventory_2_outlined),
               activeIcon: alertCount > 0
                   ? Badge(
                       label: Text('$alertCount'),
-                      child: const Icon(Icons.inventory_2),
-                    )
+                      child: const Icon(Icons.inventory_2))
                   : const Icon(Icons.inventory_2),
               label: 'Operacional',
             ),
@@ -177,6 +181,20 @@ class _HomeScreenState extends State<HomeScreen> {
               icon: Icon(Icons.account_balance_wallet_outlined),
               activeIcon: Icon(Icons.account_balance_wallet),
               label: 'Financeiro',
+            ),
+            // Agenda com badge de eventos do dia
+            BottomNavigationBarItem(
+              icon: todayEvents > 0
+                  ? Badge(
+                      label: Text('$todayEvents'),
+                      child: const Icon(Icons.calendar_month_outlined))
+                  : const Icon(Icons.calendar_month_outlined),
+              activeIcon: todayEvents > 0
+                  ? Badge(
+                      label: Text('$todayEvents'),
+                      child: const Icon(Icons.calendar_month))
+                  : const Icon(Icons.calendar_month),
+              label: 'Agenda',
             ),
             const BottomNavigationBarItem(
               icon: Icon(Icons.admin_panel_settings_outlined),

@@ -1,7 +1,7 @@
 name: frontend
 description: "S.F.C.P.C - Sistema de Gestão Agêntica para Sofás"
 publish_to: 'none'
-version: 1.1.0+2
+version: 1.2.0+3
 
 environment:
   sdk: ^3.11.1
@@ -44,6 +44,16 @@ dependencies:
 
   # Conectividade Offline (Sprint 4)
   connectivity_plus: ^6.1.4
+
+  # ── AGENDA MODULE (Sprint 5) ──────────────────────────────
+  # Reconhecimento de voz
+  speech_to_text: ^7.0.0
+
+  # Notificações locais agendadas
+  flutter_local_notifications: ^18.0.1
+
+  # Fusos horários (necessário para zonedSchedule)
+  timezone: ^0.9.4
 
 dev_dependencies:
   flutter_test:
