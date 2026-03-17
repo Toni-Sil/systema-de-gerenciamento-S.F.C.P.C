@@ -1,29 +1,78 @@
-import 'package:url_launcher/url_launcher.dart';
+import 'dart:convert';
+import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
 
-/// Serviço de relatório financeiro do agente.
-/// Envia relatório semanal formatado via WhatsApp usando url_launcher.
+/// Servico de relatorio financeiro do agente.
+/// Envia relatorio semanal formatado via backend -> Evolution API -> WhatsApp.
+/// O envio e 100% automatico, sem interacao do usuario.
 class FinancialAgentService {
   FinancialAgentService._();
 
-  /// Número do gestor que recebe o relatório (formato internacional, sem +)
-  /// Configure aqui ou via Settings no futuro.
-  static const String _managerPhone = '5511900000000';
+  static const _baseUrlKey = 'api_base_url';
+  static const _defaultBase = 'https://localhost:8000';
+  static const _tokenKey = 'auth_token';
 
-  /// Abre WhatsApp com o relatório semanal pré-preenchido.
-  /// O usuário ainda precisa apertar Enviar — por design,
-  /// para que o gestor revise antes de confirmar.
-  static Future<void> sendWhatsAppReport(String reportText) async {
-    final encoded = Uri.encodeComponent(reportText);
-    final waUrl = Uri.parse('https://wa.me/$_managerPhone?text=$encoded');
-    final waBusiness =
-        Uri.parse('https://wa.me/$_managerPhone?text=$encoded');
+  static Future<String> _baseUrl() async {
+    final prefs = await SharedPreferences.getInstance();
+    final url = prefs.getString(_baseUrlKey) ?? _defaultBase;
+    return url.endsWith('/') ? url.substring(0, url.length - 1) : url;
+  }
 
-    // Tenta WhatsApp Business primeiro, depois WhatsApp normal
-    if (await canLaunchUrl(waBusiness)) {
-      await launchUrl(waBusiness,
-          mode: LaunchMode.externalApplication);
-    } else if (await canLaunchUrl(waUrl)) {
-      await launchUrl(waUrl, mode: LaunchMode.externalApplication);
+  static Future<String?> _token() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString(_tokenKey);
+  }
+
+  /// Envia o relatorio para o backend que repassa via Evolution API.
+  /// Retorna true se bem-sucedido.
+  static Future<bool> sendWhatsAppReport(
+    String reportText, {
+    String? jid, // opcional: numero especifico. Padrao: WHATSAPP_MANAGER_JID do .env
+  }) async {
+    try {
+      final base = await _baseUrl();
+      final token = await _token();
+      final resp = await http
+          .post(
+            Uri.parse('$base/whatsapp/send-report'),
+            headers: {
+              'Content-Type': 'application/json',
+              'Accept': 'application/json',
+              if (token != null) 'Authorization': 'Bearer $token',
+            },
+            body: jsonEncode({
+              'report_text': reportText,
+              if (jid != null) 'jid': jid,
+            }),
+          )
+          .timeout(const Duration(seconds: 20));
+
+      return resp.statusCode == 200 || resp.statusCode == 201;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Verifica se a instancia WhatsApp esta conectada.
+  static Future<String> checkWhatsAppStatus() async {
+    try {
+      final base = await _baseUrl();
+      final resp = await http
+          .get(
+            Uri.parse('$base/whatsapp/status'),
+            headers: {'Accept': 'application/json'},
+          )
+          .timeout(const Duration(seconds: 10));
+
+      if (resp.statusCode == 200) {
+        final data = jsonDecode(resp.body) as Map<String, dynamic>;
+        return data['state'] as String? ??
+            data['status'] as String? ??
+            'unknown';
+      }
+      return 'error';
+    } catch (_) {
+      return 'offline';
     }
   }
 }

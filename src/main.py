@@ -34,6 +34,8 @@ from models.entities import (
 from services.financial_service import FinancialService
 from services.stock_service import StockService
 from services.user_service import UserService
+from routes.whatsapp_router import router as whatsapp_router
+from services.scheduler_service import SchedulerService
 
 logging.basicConfig(
     level=logging.INFO,
@@ -50,8 +52,11 @@ logger = logging.getLogger(__name__)
 async def lifespan(app: FastAPI):
     logger.info("startup: initialising message broker worker")
     await producer.start_worker()
+    # Inicia scheduler de tarefas periodicas (relatorio semanal + alertas diarios)
+    SchedulerService.start()
     yield
     logger.info("shutdown: cleaning up resources")
+    SchedulerService.stop()
 
 
 # ---------------------------------------------------------------------------
@@ -61,13 +66,13 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="S.F.C.P.C — Systema de Gerenciamento",
     description="SaaS Multi-tenant Inventory Management System",
-    version="0.2.0",
+    version="0.3.0",
     lifespan=lifespan,
     docs_url="/docs",
     redoc_url="/redoc",
 )
 
-# CORS — restrict origins in production via ALLOWED_ORIGINS env var
+# CORS
 _allowed_origins = os.getenv("ALLOWED_ORIGINS", "*").split(",")
 app.add_middleware(
     CORSMiddleware,
@@ -79,7 +84,9 @@ app.add_middleware(
 app.add_middleware(RateLimiterMiddleware, requests_per_minute=60)
 app.add_middleware(TenantMiddleware)
 
-# Shorthand dependency — all protected routes use this
+# Routers
+app.include_router(whatsapp_router)
+
 _auth = Depends(verify_jwt_token)
 
 
@@ -89,7 +96,7 @@ _auth = Depends(verify_jwt_token)
 
 @app.get("/", tags=["Health"])
 async def root():
-    return {"status": "ok", "service": "S.F.C.P.C API", "version": "0.2.0"}
+    return {"status": "ok", "service": "S.F.C.P.C API", "version": "0.3.0"}
 
 
 # ---------------------------------------------------------------------------
@@ -106,14 +113,12 @@ class LoginRequest(BaseModel):
 
 @app.post("/auth/register", response_model=UserSchema, tags=["Auth"], status_code=201)
 async def register_user(data: UserCreateSchema):
-    """Register a new user. Endpoint is public (used during tenant onboarding)."""
     async with get_session() as session:
         return await UserService.register(data, session)
 
 
 @app.post("/auth/login", tags=["Auth"])
 async def login(request: LoginRequest):
-    """Authenticate with username + password and receive a JWT Bearer token."""
     async with get_session() as session:
         return await UserService.authenticate(
             tenant_id=request.tenant_id,
@@ -132,7 +137,6 @@ async def list_products(
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
 ):
-    """List all products for the current tenant (paginated)."""
     async with get_session() as session:
         from db.orm_models import ProductORM
         from db.base_repository import BaseRepository
@@ -142,7 +146,6 @@ async def list_products(
 
 @app.post("/products", response_model=ProductSchema, tags=["Products"], status_code=201, dependencies=[_auth])
 async def create_product(product: ProductSchema):
-    """Create a new product in the tenant catalogue."""
     async with get_session() as session:
         from db.orm_models import ProductORM
         from db.base_repository import BaseRepository
@@ -152,7 +155,6 @@ async def create_product(product: ProductSchema):
 
 @app.get("/products/{product_id}", response_model=ProductSchema, tags=["Products"], dependencies=[_auth])
 async def get_product(product_id: UUID):
-    """Fetch a single product by ID."""
     async with get_session() as session:
         from db.orm_models import ProductORM
         from db.base_repository import BaseRepository
@@ -169,7 +171,6 @@ async def get_product(product_id: UUID):
 
 @app.post("/movements", response_model=StockBalanceSchema, tags=["Stock"], status_code=201, dependencies=[_auth])
 async def create_movement(movement: MovementSchema):
-    """Record a stock movement (ENTRY / EXIT / ADJUSTMENT / TRANSFER)."""
     async with get_session() as session:
         return await StockService.process_movement(movement, session)
 
@@ -204,7 +205,6 @@ async def list_balances(
 
 @app.post("/finance/expenses", response_model=ExpenseSchema, tags=["Finance"], status_code=201, dependencies=[_auth])
 async def create_expense(expense: ExpenseSchema):
-    """Register a financial expense manually."""
     async with get_session() as session:
         return await FinancialService.create_expense(expense, session)
 
@@ -214,7 +214,6 @@ async def financial_summary(
     period_start: date = Query(..., description="Format: YYYY-MM-DD"),
     period_end: date = Query(..., description="Format: YYYY-MM-DD"),
 ):
-    """Returns aggregated financial summary for the given period."""
     tenant_id = get_tenant_id()
     if not tenant_id:
         raise HTTPException(status_code=403, detail="Tenant context missing")
@@ -227,23 +226,18 @@ async def upload_financial_document(
     file: UploadFile = File(...),
     document_type: str = Form("INVOICE"),
 ):
-    """OCR ingestion of invoices/receipts (LGPD-compliant: file bytes never persisted to disk)."""
     tenant_id = get_tenant_id()
     file_bytes = await file.read()
-
     from vision.ocr_service import OCRService
     from llm.agent import AgentOrchestrator
     import json
-
     extracted_text = OCRService.extract_text(file_bytes)
     prompt = f"[{document_type}] OCR Extraction: {extracted_text}"
     reply_str = await AgentOrchestrator.process_message(tenant_id, prompt)
-
     try:
         reply_json = json.loads(reply_str)
     except Exception:
         reply_json = {"raw_reply": reply_str}
-
     return {
         "status": "success",
         "ocr_preview": extracted_text[:150] + "..." if len(extracted_text) > 150 else extracted_text,
@@ -287,7 +281,6 @@ class ChatMessage(BaseModel):
 
 @app.post("/chat", tags=["Agent"], dependencies=[_auth])
 async def chat_with_agent(chat_input: ChatMessage):
-    """Send natural language commands to the LLM inventory agent."""
     from llm.agent import AgentOrchestrator
     reply = await AgentOrchestrator.process_message(
         tenant_id=get_tenant_id(),
