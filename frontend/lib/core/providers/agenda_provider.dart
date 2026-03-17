@@ -10,7 +10,7 @@ class AgendaProvider extends ChangeNotifier {
   bool _isLoading = false;
   String? _lastVoiceResult;
 
-  List<AgendaEvent> get events => _events;
+  List<AgendaEvent> get events => List.unmodifiable(_events);
   DateTime get selectedDay => _selectedDay;
   bool get isLoading => _isLoading;
   String? get lastVoiceResult => _lastVoiceResult;
@@ -48,8 +48,7 @@ class AgendaProvider extends ChangeNotifier {
   }
 
   int get todayCount => todayEvents.length;
-  int get urgentCount =>
-      todayEvents.where((e) => e.isUrgent).length;
+  int get urgentCount => todayEvents.where((e) => e.isUrgent).length;
 
   Future<void> init() async {
     await _loadFromPrefs();
@@ -74,16 +73,15 @@ class AgendaProvider extends ChangeNotifier {
 
   Future<void> updateEvent(AgendaEvent updated) async {
     final idx = _events.indexWhere((e) => e.id == updated.id);
-    if (idx != -1) {
-      await NotificationService.instance.cancelNotification(updated.id);
-      _events[idx] = updated;
-      _events.sort((a, b) => a.dateTime.compareTo(b.dateTime));
-      await _saveToPrefs();
-      if (updated.notifyBefore) {
-        await NotificationService.instance.scheduleEventNotification(updated);
-      }
-      notifyListeners();
+    if (idx == -1) return;
+    await NotificationService.instance.cancelNotification(updated.id);
+    _events[idx] = updated;
+    _events.sort((a, b) => a.dateTime.compareTo(b.dateTime));
+    await _saveToPrefs();
+    if (updated.notifyBefore) {
+      await NotificationService.instance.scheduleEventNotification(updated);
     }
+    notifyListeners();
   }
 
   Future<void> deleteEvent(String id) async {
@@ -95,30 +93,35 @@ class AgendaProvider extends ChangeNotifier {
 
   Future<void> markCompleted(String id) async {
     final idx = _events.indexWhere((e) => e.id == id);
-    if (idx != -1) {
-      _events[idx] = _events[idx].copyWith(status: EventStatus.concluido);
-      await _saveToPrefs();
-      notifyListeners();
-    }
+    if (idx == -1) return;
+    _events[idx] = _events[idx].copyWith(status: EventStatus.concluido);
+    await _saveToPrefs();
+    notifyListeners();
   }
 
-  // Processa comando de voz em texto e cria evento
   Future<String> processVoiceCommand(String transcript) async {
     _isLoading = true;
     notifyListeners();
-
     try {
-      final event = _parseVoiceTranscript(transcript);
-      if (event != null) {
-        await addEvent(event);
+      final trimmed = transcript.trim();
+      // FIX: valida transcript mínimo de 3 chars antes de parsear
+      if (trimmed.length < 3) {
         _lastVoiceResult =
-            'Agendado: "${event.title}" para ${event.formattedDate} às ${event.formattedTime}';
+            'Não entendi. Tente: "Reunião com fornecedor amanhã às 14h"';
       } else {
-        _lastVoiceResult =
-            'Não entendi o evento. Tente: "Reunião com fornecedor amanhã às 14h"';
+        final event = _parseVoiceTranscript(trimmed);
+        if (event != null) {
+          await addEvent(event);
+          _lastVoiceResult =
+              '✅ Agendado: "${event.title}" para ${event.formattedDate} às ${event.formattedTime}';
+        } else {
+          _lastVoiceResult =
+              'Não consegui identificar o evento. Tente incluir uma hora ou data.';
+        }
       }
-    } catch (e) {
-      _lastVoiceResult = 'Erro ao processar comando de voz.';
+    } catch (e, st) {
+      debugPrint('[AgendaProvider] processVoiceCommand error: $e\n$st');
+      _lastVoiceResult = 'Erro interno ao processar comando.';
     } finally {
       _isLoading = false;
       notifyListeners();
@@ -126,45 +129,57 @@ class AgendaProvider extends ChangeNotifier {
     return _lastVoiceResult!;
   }
 
-  // Parser simples de linguagem natural
   AgendaEvent? _parseVoiceTranscript(String text) {
     final lower = text.toLowerCase();
-    DateTime? eventDate;
     int hour = 9;
     int minute = 0;
     final now = DateTime.now();
+    DateTime eventDate;
 
-    // Detectar hora (14h, 14:30, 14 horas)
-    final hourRegex = RegExp(r'(\d{1,2})(?::?(\d{2}))?\s*h(oras?)?');
+    // Hora: aceita "14h", "14:30", "14 horas", "14h30"
+    final hourRegex =
+        RegExp(r'(\d{1,2})h(oras?)?\s*(\d{2})?|(\d{1,2}):(\d{2})');
     final hourMatch = hourRegex.firstMatch(lower);
     if (hourMatch != null) {
-      hour = int.tryParse(hourMatch.group(1) ?? '9') ?? 9;
-      minute = int.tryParse(hourMatch.group(2) ?? '0') ?? 0;
+      if (hourMatch.group(4) != null) {
+        // formato HH:MM
+        hour = int.tryParse(hourMatch.group(4)!) ?? 9;
+        minute = int.tryParse(hourMatch.group(5) ?? '0') ?? 0;
+      } else {
+        hour = int.tryParse(hourMatch.group(1)!) ?? 9;
+        minute = int.tryParse(hourMatch.group(3) ?? '0') ?? 0;
+      }
+      // Validação de range
+      hour = hour.clamp(0, 23);
+      minute = minute.clamp(0, 59);
     }
 
-    // Detectar data
+    // Data
     if (lower.contains('hoje')) {
       eventDate = DateTime(now.year, now.month, now.day, hour, minute);
     } else if (lower.contains('amanhã') || lower.contains('amanha')) {
-      final tomorrow = now.add(const Duration(days: 1));
-      eventDate =
-          DateTime(tomorrow.year, tomorrow.month, tomorrow.day, hour, minute);
+      final t = now.add(const Duration(days: 1));
+      eventDate = DateTime(t.year, t.month, t.day, hour, minute);
     } else if (lower.contains('segunda')) {
-      eventDate = _nextWeekday(1, hour, minute);
+      eventDate = _nextWeekday(DateTime.monday, hour, minute);
     } else if (lower.contains('terça') || lower.contains('terca')) {
-      eventDate = _nextWeekday(2, hour, minute);
+      eventDate = _nextWeekday(DateTime.tuesday, hour, minute);
     } else if (lower.contains('quarta')) {
-      eventDate = _nextWeekday(3, hour, minute);
+      eventDate = _nextWeekday(DateTime.wednesday, hour, minute);
     } else if (lower.contains('quinta')) {
-      eventDate = _nextWeekday(4, hour, minute);
+      eventDate = _nextWeekday(DateTime.thursday, hour, minute);
     } else if (lower.contains('sexta')) {
-      eventDate = _nextWeekday(5, hour, minute);
+      eventDate = _nextWeekday(DateTime.friday, hour, minute);
+    } else if (lower.contains('sábado') || lower.contains('sabado')) {
+      eventDate = _nextWeekday(DateTime.saturday, hour, minute);
+    } else if (lower.contains('domingo')) {
+      eventDate = _nextWeekday(DateTime.sunday, hour, minute);
     } else {
-      // Sem data detectada: assume hoje
+      // Sem data específica: assume hoje
       eventDate = DateTime(now.year, now.month, now.day, hour, minute);
     }
 
-    // Detectar categoria
+    // Categoria
     EventCategory category = EventCategory.outro;
     EventPriority priority = EventPriority.normal;
 
@@ -173,30 +188,39 @@ class AgendaProvider extends ChangeNotifier {
     } else if (lower.contains('entrega')) {
       category = EventCategory.entrega;
     } else if (lower.contains('reposição') ||
+        lower.contains('reposit') ||
         lower.contains('estoque') ||
         lower.contains('repor')) {
       category = EventCategory.reposicao;
     } else if (lower.contains('pagamento') ||
         lower.contains('financeiro') ||
-        lower.contains('boleto')) {
+        lower.contains('boleto') ||
+        lower.contains('fatura')) {
       category = EventCategory.financeiro;
       priority = EventPriority.alta;
+    } else if (lower.contains('pessoal') || lower.contains('particular')) {
+      category = EventCategory.pessoal;
     }
 
     if (lower.contains('urgente') || lower.contains('importante')) {
       priority = EventPriority.urgente;
     }
 
-    // Título: remove palavras de data/hora para deixar só o conteúdo
+    // Título: remove palavras de contexto temporal
     String title = text
         .replaceAll(
-            RegExp(
-                r'(hoje|amanh[aã]|segunda|ter[cç]a|quarta|quinta|sexta|\d{1,2}h(oras?)?|\d{1,2}:\d{2})',
-                caseSensitive: false),
-            '')
+          RegExp(
+            r'(hoje|amanh[aã]|segunda(-feira)?|ter[cç]a(-feira)?|quarta(-feira)?|quinta(-feira)?|sexta(-feira)?|s[aá]bado|domingo|\d{1,2}h(oras?)?(\s*\d{2})?|\d{1,2}:\d{2}|urgente|importante)',
+            caseSensitive: false,
+          ),
+          '',
+        )
+        .replaceAll(RegExp(r'\s{2,}'), ' ')
         .trim();
-    if (title.isEmpty) title = 'Evento';
-    // Capitaliza primeira letra
+
+    // FIX: rejeita títulos muito curtos ou vazios — retorna null para não criar lixo
+    if (title.length < 3) return null;
+
     title = title[0].toUpperCase() + title.substring(1);
 
     return AgendaEvent(
@@ -212,8 +236,7 @@ class AgendaProvider extends ChangeNotifier {
   }
 
   DateTime _nextWeekday(int weekday, int hour, int minute) {
-    final now = DateTime.now();
-    var date = now;
+    var date = DateTime.now().add(const Duration(days: 1));
     while (date.weekday != weekday) {
       date = date.add(const Duration(days: 1));
     }
@@ -231,24 +254,40 @@ class AgendaProvider extends ChangeNotifier {
   }
 
   Future<void> _saveToPrefs() async {
-    final prefs = await SharedPreferences.getInstance();
-    final list = _events.map((e) => jsonEncode(e.toJson())).toList();
-    await prefs.setStringList('agenda_events', list);
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final list = _events.map((e) => jsonEncode(e.toJson())).toList();
+      await prefs.setStringList('agenda_events', list);
+    } catch (e) {
+      debugPrint('[AgendaProvider] _saveToPrefs error: $e');
+    }
   }
 
   Future<void> _loadFromPrefs() async {
-    final prefs = await SharedPreferences.getInstance();
-    final list = prefs.getStringList('agenda_events') ?? [];
-    _events = list
-        .map((s) => AgendaEvent.fromJson(jsonDecode(s)))
-        .toList();
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final list = prefs.getStringList('agenda_events') ?? [];
+      _events = list
+          .map((s) {
+            try {
+              return AgendaEvent.fromJson(jsonDecode(s) as Map<String, dynamic>);
+            } catch (_) {
+              return null;
+            }
+          })
+          .whereType<AgendaEvent>()
+          .toList();
+    } catch (e) {
+      debugPrint('[AgendaProvider] _loadFromPrefs error: $e');
+      _events = [];
+    }
     notifyListeners();
   }
 
-  // Gera resumo do dia para o agente IA
   String get todaySummaryForAgent {
     if (todayEvents.isEmpty) return 'Nenhum evento agendado para hoje.';
-    final sb = StringBuffer('Agenda de hoje (${todayEvents.length} evento(s)):\n');
+    final sb = StringBuffer(
+        'Agenda de hoje (${todayEvents.length} evento(s)):\n');
     for (final e in todayEvents) {
       sb.writeln('- ${e.formattedTime}: ${e.title} [${e.priority.name}]');
     }
