@@ -51,11 +51,25 @@ class AgendaProvider extends ChangeNotifier {
   int get todayCount => todayEvents.length;
   int get urgentCount => todayEvents.where((e) => e.isUrgent).length;
 
-  // FIX #4: _rescheduleAllNotifications agora é Future e awaited no init()
+  // NOVO: eventos financeiros vencendo em até 3 dias
+  List<AgendaEvent> get dueSoonEvents =>
+      _events.where((e) => e.isDueSoon).toList()
+        ..sort((a, b) => a.dateTime.compareTo(b.dateTime));
+
+  int get dueSoonCount => dueSoonEvents.length;
+
+  // NOVO: total de valores financeiros vencendo em breve
+  double get dueSoonTotalAmount => dueSoonEvents.fold(
+        0.0,
+        (sum, e) => sum + (e.financialAmount ?? 0.0),
+      );
+
   Future<void> init() async {
     await _loadFromPrefs();
     await NotificationService.instance.init();
     await _rescheduleAllNotifications();
+    // Agenda notificações de vencimento financeiro ao inicializar
+    await _scheduleFinancialDueAlerts();
   }
 
   void setSelectedDay(DateTime day) {
@@ -70,6 +84,10 @@ class AgendaProvider extends ChangeNotifier {
     if (event.notifyBefore) {
       await NotificationService.instance.scheduleEventNotification(event);
     }
+    // Se for evento financeiro, agenda também alerta de vencimento
+    if (event.category == EventCategory.financeiro) {
+      await _scheduleFinancialDueAlert(event);
+    }
     notifyListeners();
   }
 
@@ -82,6 +100,9 @@ class AgendaProvider extends ChangeNotifier {
     await _saveToPrefs();
     if (updated.notifyBefore) {
       await NotificationService.instance.scheduleEventNotification(updated);
+    }
+    if (updated.category == EventCategory.financeiro) {
+      await _scheduleFinancialDueAlert(updated);
     }
     notifyListeners();
   }
@@ -204,7 +225,7 @@ class AgendaProvider extends ChangeNotifier {
     String title = text
         .replaceAll(
           RegExp(
-            r'(hoje|amanh[aã]|segunda(-feira)?|ter[cç]a(-feira)?|quarta(-feira)?|quinta(-feira)?|sexta(-feira)?|s[aá]bado|domingo|\d{1,2}h(oras?)?(\s*\d{2})?|\d{1,2}:\d{2}|urgente|importante)',
+            r'(hoje|amanh[aã]|segunda(-feira)?|ter[cç]a(-feira)?|quarta(-feira)?|quinta(-feira)?|sexta(-feira)?|s[áa]bado|domingo|\d{1,2}h(oras?)?(\s*\d{2})?|\d{1,2}:\d{2}|urgente|importante)',
             caseSensitive: false,
           ),
           '',
@@ -215,6 +236,20 @@ class AgendaProvider extends ChangeNotifier {
     if (title.length < 3) return null;
     title = title[0].toUpperCase() + title.substring(1);
 
+    // Tenta extrair valor financeiro do transcript (ex: "R$ 350,00" ou "350 reais")
+    double? extractedAmount;
+    final moneyRegex = RegExp(
+        r'R\$\s*([\d.,]+)|([\d.,]+)\s*reais',
+        caseSensitive: false);
+    final moneyMatch = moneyRegex.firstMatch(lower);
+    if (moneyMatch != null) {
+      final raw =
+          (moneyMatch.group(1) ?? moneyMatch.group(2) ?? '')
+              .replaceAll('.', '')
+              .replaceAll(',', '.');
+      extractedAmount = double.tryParse(raw);
+    }
+
     return AgendaEvent(
       id: Uid.generate(),
       title: title,
@@ -224,6 +259,7 @@ class AgendaProvider extends ChangeNotifier {
       isVoiceCreated: true,
       notifyBefore: true,
       notifyMinutes: 30,
+      financialAmount: extractedAmount,
     );
   }
 
@@ -235,7 +271,6 @@ class AgendaProvider extends ChangeNotifier {
     return DateTime(date.year, date.month, date.day, hour, minute);
   }
 
-  // FIX #4: agora é Future<void> e cada notificação tem try/catch individual
   Future<void> _rescheduleAllNotifications() async {
     for (final event in _events) {
       if (event.notifyBefore &&
@@ -248,6 +283,38 @@ class AgendaProvider extends ChangeNotifier {
               '[AgendaProvider] falha ao reagendar notif ${event.id}: $e');
         }
       }
+    }
+  }
+
+  /// Agenda alertas de vencimento para TODOS os eventos financeiros pendentes
+  Future<void> _scheduleFinancialDueAlerts() async {
+    for (final event in _events) {
+      if (event.category == EventCategory.financeiro) {
+        await _scheduleFinancialDueAlert(event);
+      }
+    }
+  }
+
+  /// Agenda notificação 3 dias antes do vencimento financeiro
+  Future<void> _scheduleFinancialDueAlert(AgendaEvent event) async {
+    if (event.isPast ||
+        event.status == EventStatus.cancelado ||
+        event.status == EventStatus.concluido) return;
+    try {
+      final alertDate = event.dateTime.subtract(const Duration(days: 3));
+      if (alertDate.isAfter(DateTime.now())) {
+        final alertEvent = event.copyWith(
+          id: '${event.id}_due_alert',
+          title: '⚠️ Vencimento em 3 dias: ${event.title}'
+              '${event.financialAmount != null ? ' (R\$ ${event.financialAmount!.toStringAsFixed(2)})' : ''}',
+          dateTime: alertDate,
+          notifyMinutes: 0,
+        );
+        await NotificationService.instance
+            .scheduleEventNotification(alertEvent);
+      }
+    } catch (e) {
+      debugPrint('[AgendaProvider] _scheduleFinancialDueAlert error: $e');
     }
   }
 
@@ -283,6 +350,7 @@ class AgendaProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Resumo de hoje para o agente (agenda)
   String get todaySummaryForAgent {
     if (todayEvents.isEmpty) return 'Nenhum evento agendado para hoje.';
     final sb = StringBuffer(
@@ -290,6 +358,69 @@ class AgendaProvider extends ChangeNotifier {
     for (final e in todayEvents) {
       sb.writeln('- ${e.formattedTime}: ${e.title} [${e.priority.name}]');
     }
+    return sb.toString();
+  }
+
+  /// NOVO: Resumo financeiro para o agente (vencimentos próximos)
+  String get financialSummaryForAgent {
+    if (dueSoonEvents.isEmpty) return '';
+    final sb = StringBuffer(
+        '⚠️ ${dueSoonEvents.length} vencimento(s) nos próximos 3 dias:\n');
+    for (final e in dueSoonEvents) {
+      final valor = e.financialAmount != null
+          ? ' — R\$ ${e.financialAmount!.toStringAsFixed(2)}'
+          : '';
+      final dias = e.dateTime.difference(DateTime.now()).inDays;
+      final quando = dias == 0 ? 'hoje' : 'em $dias dia(s)';
+      sb.writeln('- ${e.title}$valor [$quando]');
+    }
+    if (dueSoonTotalAmount > 0) {
+      sb.writeln(
+          'Total a pagar: R\$ ${dueSoonTotalAmount.toStringAsFixed(2)}');
+    }
+    return sb.toString();
+  }
+
+  /// NOVO: Relatório semanal completo (agenda + financeiro) para WhatsApp
+  String weeklyReportText(String companyName) {
+    final now = DateTime.now();
+    final nextWeek = now.add(const Duration(days: 7));
+    final weekEvents = _events
+        .where((e) =>
+            e.dateTime.isAfter(now) &&
+            e.dateTime.isBefore(nextWeek) &&
+            e.status != EventStatus.cancelado)
+        .toList()
+      ..sort((a, b) => a.dateTime.compareTo(b.dateTime));
+
+    final financialEvents =
+        weekEvents.where((e) => e.category == EventCategory.financeiro);
+    final totalFinancial =
+        financialEvents.fold(0.0, (s, e) => s + (e.financialAmount ?? 0.0));
+
+    final sb = StringBuffer();
+    sb.writeln('📊 *Relatório Semanal — $companyName*');
+    sb.writeln(
+        '${now.day.toString().padLeft(2, '0')}/${now.month.toString().padLeft(2, '0')} – ${nextWeek.day.toString().padLeft(2, '0')}/${nextWeek.month.toString().padLeft(2, '0')}/${nextWeek.year}');
+    sb.writeln();
+    if (weekEvents.isEmpty) {
+      sb.writeln('Nenhum evento na próxima semana.');
+    } else {
+      sb.writeln('🗓️ *Agenda (${weekEvents.length} evento(s))*');
+      for (final e in weekEvents) {
+        final valor = e.financialAmount != null
+            ? ' — R\$ ${e.financialAmount!.toStringAsFixed(2)}'
+            : '';
+        sb.writeln(
+            '- ${e.formattedDate} ${e.formattedTime}: ${e.title}$valor');
+      }
+      sb.writeln();
+    }
+    if (totalFinancial > 0) {
+      sb.writeln('💰 *Compromissos Financeiros: R\$ ${totalFinancial.toStringAsFixed(2)}*');
+    }
+    sb.writeln();
+    sb.writeln('_Gerado automaticamente pelo Agente S.F.C.P.C_');
     return sb.toString();
   }
 }

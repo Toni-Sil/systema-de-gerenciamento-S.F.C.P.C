@@ -8,6 +8,7 @@ import 'package:frontend/core/providers/user_provider.dart';
 import 'package:frontend/core/providers/operational_provider.dart';
 import 'package:frontend/core/providers/agenda_provider.dart';
 import 'package:frontend/core/services/api_service.dart';
+import 'package:frontend/core/services/financial_agent_service.dart';
 import 'package:frontend/presentation/screens/barcode_scanner_screen.dart';
 import 'package:frontend/presentation/theme/app_theme.dart';
 
@@ -34,11 +35,18 @@ class _AgentScreenState extends State<AgentScreen> {
       if (!mounted) return;
       final userProvider = context.read<UserProvider>();
       final opProvider = context.read<OperationalProvider>();
+      final agendaProvider = context.read<AgendaProvider>();
+
+      final financialAlert = agendaProvider.financialSummaryForAgent;
+      final restockAlert = opProvider.restockSummaryForAgent;
       final lowStock = opProvider.lowStockItems.firstOrNull;
+
       setState(() {
         _messages.add(ChatMessage.greeting(
           userProvider.adminName,
           lowStockItem: lowStock?.description,
+          financialAlert: financialAlert.isNotEmpty ? financialAlert : null,
+          restockAlert: restockAlert.isNotEmpty ? restockAlert : null,
         ));
       });
     });
@@ -64,14 +72,23 @@ class _AgentScreenState extends State<AgentScreen> {
     });
   }
 
-  // FIX #1: injeta resumo da agenda como context no prompt do agente
   Future<void> _sendMessage(String text) async {
     if (text.trim().isEmpty || _isSending) return;
     _controller.clear();
     _focusNode.requestFocus();
 
-    // Captura contexto da agenda antes de qualquer await
     final agendaSummary = context.read<AgendaProvider>().todaySummaryForAgent;
+    final financialSummary =
+        context.read<AgendaProvider>().financialSummaryForAgent;
+    final restockSummary =
+        context.read<OperationalProvider>().restockSummaryForAgent;
+
+    // Contexto enriquecido: agenda + financeiro + estoque
+    final fullContext = [
+      agendaSummary,
+      if (financialSummary.isNotEmpty) financialSummary,
+      if (restockSummary.isNotEmpty) restockSummary,
+    ].join('\n');
 
     setState(() {
       _messages.add(ChatMessage(
@@ -87,7 +104,7 @@ class _AgentScreenState extends State<AgentScreen> {
     try {
       final res = await ApiService.instance.sendAgentMessage(
         text.trim(),
-        context: agendaSummary,
+        context: fullContext,
       );
       final reply = res['reply'] as String? ??
           res['message'] as String? ??
@@ -136,6 +153,17 @@ class _AgentScreenState extends State<AgentScreen> {
     );
   }
 
+  // NOVO: envia relatório semanal via WhatsApp
+  Future<void> _sendWeeklyReport() async {
+    final agendaProvider = context.read<AgendaProvider>();
+    final userProvider = context.read<UserProvider>();
+    final report =
+        agendaProvider.weeklyReportText(userProvider.companyName);
+    await FinancialAgentService.sendWhatsAppReport(report);
+    _addAgentMessage(
+        'Relatório semanal enviado via WhatsApp! 📊\n\nContiúem o bom trabalho.');
+  }
+
   void _showAttachmentMenu() {
     showModalBottomSheet(
       context: context,
@@ -155,7 +183,8 @@ class _AgentScreenState extends State<AgentScreen> {
           mainAxisSize: MainAxisSize.min,
           children: [
             Container(
-              width: 40, height: 4,
+              width: 40,
+              height: 4,
               margin: const EdgeInsets.only(bottom: 20),
               decoration: BoxDecoration(
                   color: Colors.white.withValues(alpha: 0.2),
@@ -194,6 +223,15 @@ class _AgentScreenState extends State<AgentScreen> {
                       Navigator.pop(ctx);
                       _processOcr(isDocument: true);
                     }),
+                // NOVO: botão de relatório semanal
+                _attachOption(ctx,
+                    icon: Icons.send_to_mobile,
+                    label: 'Relatório\nSemanal',
+                    color: const Color(0xFF25D366),
+                    onTap: () {
+                      Navigator.pop(ctx);
+                      _sendWeeklyReport();
+                    }),
               ],
             ),
           ],
@@ -213,7 +251,8 @@ class _AgentScreenState extends State<AgentScreen> {
       child: Column(
         children: [
           Container(
-            width: 68, height: 68,
+            width: 68,
+            height: 68,
             decoration: BoxDecoration(
               color: color.withValues(alpha: 0.1),
               borderRadius: BorderRadius.circular(20),
@@ -403,8 +442,49 @@ class _AgentScreenState extends State<AgentScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final agendaProvider = context.watch<AgendaProvider>();
+    final dueSoon = agendaProvider.dueSoonCount;
+
     return Column(
       children: [
+        // NOVO: banner de alertas financeiros (aparece quando há vencimentos próximos)
+        if (dueSoon > 0)
+          Material(
+            color: Colors.transparent,
+            child: InkWell(
+              onTap: () => _addAgentMessage(
+                  agendaProvider.financialSummaryForAgent),
+              child: Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 16, vertical: 8),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF59E0B).withValues(alpha: 0.12),
+                  border: const Border(
+                    bottom: BorderSide(
+                        color: Color(0xFFF59E0B), width: 0.5),
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.warning_amber_rounded,
+                        color: Color(0xFFF59E0B), size: 16),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        '$dueSoon vencimento(s) financeiro(s) nos próximos 3 dias'
+                        '${agendaProvider.dueSoonTotalAmount > 0 ? " — R\$ ${agendaProvider.dueSoonTotalAmount.toStringAsFixed(2)}" : ""}. Toque para ver detalhes.',
+                        style: const TextStyle(
+                            color: Color(0xFFF59E0B),
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
         Expanded(
           child: ListView.builder(
             controller: _scrollCtrl,
@@ -421,7 +501,8 @@ class _AgentScreenState extends State<AgentScreen> {
             child: const Row(
               children: [
                 SizedBox(
-                  width: 16, height: 16,
+                  width: 16,
+                  height: 16,
                   child: CircularProgressIndicator(
                       strokeWidth: 2, color: AppColors.neonCyan),
                 ),
@@ -468,7 +549,8 @@ class _AgentScreenState extends State<AgentScreen> {
                 child: _isSending
                     ? const SizedBox(
                         key: ValueKey('loading'),
-                        width: 24, height: 24,
+                        width: 24,
+                        height: 24,
                         child: Padding(
                           padding: EdgeInsets.all(4),
                           child: CircularProgressIndicator(
@@ -583,7 +665,6 @@ class _AgentScreenState extends State<AgentScreen> {
   }
 }
 
-// FIX #3: _BouncingDot sem repeat+forward conflitantes
 class _BouncingDot extends StatefulWidget {
   final Duration delay;
   const _BouncingDot({required this.delay});
@@ -606,7 +687,6 @@ class _BouncingDotState extends State<_BouncingDot>
     );
     _anim = Tween<double>(begin: 0, end: -6).animate(
         CurvedAnimation(parent: _ctrl, curve: Curves.easeInOut));
-    // FIX: inicia delayed sem chamar forward() depois de repeat()
     Future.delayed(widget.delay, () {
       if (mounted) _ctrl.repeat(reverse: true);
     });
@@ -625,7 +705,8 @@ class _BouncingDotState extends State<_BouncingDot>
       builder: (_, __) => Container(
         margin: const EdgeInsets.symmetric(horizontal: 3),
         transform: Matrix4.translationValues(0, _anim.value, 0),
-        width: 7, height: 7,
+        width: 7,
+        height: 7,
         decoration: BoxDecoration(
           color: AppColors.neonCyan.withValues(alpha: 0.7),
           shape: BoxShape.circle,

@@ -4,7 +4,6 @@ enum EventPriority { baixa, normal, alta, urgente }
 enum EventStatus { pendente, confirmado, cancelado, concluido }
 enum EventCategory { reuniao, entrega, reposicao, financeiro, pessoal, outro }
 
-// Sentinel para distinguir "não passou" de "passou null" no copyWith
 const _omit = Object();
 
 class AgendaEvent {
@@ -20,6 +19,8 @@ class AgendaEvent {
   final int notifyMinutes;
   final String? location;
   final bool isVoiceCreated;
+  // NOVO: valor financeiro vinculado ao evento (boleto, fatura, pagamento)
+  final double? financialAmount;
 
   const AgendaEvent({
     required this.id,
@@ -34,9 +35,9 @@ class AgendaEvent {
     this.notifyMinutes = 30,
     this.location,
     this.isVoiceCreated = false,
+    this.financialAmount,
   });
 
-  // FIX: copyWith com sentinel permite setar description/location/duration como null
   AgendaEvent copyWith({
     String? id,
     String? title,
@@ -50,6 +51,7 @@ class AgendaEvent {
     int? notifyMinutes,
     Object? location = _omit,
     bool? isVoiceCreated,
+    Object? financialAmount = _omit,
   }) {
     return AgendaEvent(
       id: id ?? this.id,
@@ -65,6 +67,9 @@ class AgendaEvent {
       notifyMinutes: notifyMinutes ?? this.notifyMinutes,
       location: location == _omit ? this.location : location as String?,
       isVoiceCreated: isVoiceCreated ?? this.isVoiceCreated,
+      financialAmount: financialAmount == _omit
+          ? this.financialAmount
+          : financialAmount as double?,
     );
   }
 
@@ -81,6 +86,7 @@ class AgendaEvent {
         'notifyMinutes': notifyMinutes,
         'location': location,
         'isVoiceCreated': isVoiceCreated,
+        'financialAmount': financialAmount,
       };
 
   factory AgendaEvent.fromJson(Map<String, dynamic> json) => AgendaEvent(
@@ -104,6 +110,7 @@ class AgendaEvent {
         notifyMinutes: json['notifyMinutes'] as int? ?? 30,
         location: json['location'] as String?,
         isVoiceCreated: json['isVoiceCreated'] as bool? ?? false,
+        financialAmount: (json['financialAmount'] as num?)?.toDouble(),
       );
 
   bool get isToday {
@@ -115,6 +122,16 @@ class AgendaEvent {
 
   bool get isPast => dateTime.isBefore(DateTime.now());
   bool get isUrgent => priority == EventPriority.urgente;
+
+  /// Retorna true se o evento financeiro vence em até 3 dias
+  bool get isDueSoon {
+    if (category != EventCategory.financeiro) return false;
+    if (status != EventStatus.pendente && status != EventStatus.confirmado) {
+      return false;
+    }
+    final daysLeft = dateTime.difference(DateTime.now()).inDays;
+    return daysLeft >= 0 && daysLeft <= 3;
+  }
 
   Color get priorityColor {
     switch (priority) {

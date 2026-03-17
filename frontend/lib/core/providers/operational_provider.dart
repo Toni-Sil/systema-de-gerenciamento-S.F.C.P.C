@@ -47,6 +47,34 @@ class OperationalProvider with ChangeNotifier {
 
   int get totalItems => _items.length;
 
+  // NOVO: custo estimado para repor todos os itens abaixo do mínimo
+  double get restockEstimatedCost {
+    return lowStockItems.fold(0.0, (sum, item) {
+      final deficit = (item.minimumStock - item.qty).clamp(0.0, double.infinity);
+      return sum + (deficit * item.cost);
+    });
+  }
+
+  // NOVO: resumo de reposicao para o agente
+  String get restockSummaryForAgent {
+    if (lowStockItems.isEmpty) return '';
+    final sb = StringBuffer(
+        '📦 ${lowStockItems.length} item(s) abaixo do estoque mínimo:\n');
+    for (final item in lowStockItems) {
+      final deficit =
+          (item.minimumStock - item.qty).clamp(0.0, double.infinity);
+      final custo = deficit * item.cost;
+      sb.writeln(
+          '- ${item.description}: ${item.qty.toInt()}/${item.minimumStock.toInt()} ${item.unit}'
+          '${custo > 0 ? " (reposicao ~R\$ ${custo.toStringAsFixed(2)})" : ""}');
+    }
+    if (restockEstimatedCost > 0) {
+      sb.writeln(
+          'Custo total estimado de reposição: R\$ ${restockEstimatedCost.toStringAsFixed(2)}');
+    }
+    return sb.toString();
+  }
+
   void setSearch(String query) {
     _search = query;
     notifyListeners();
@@ -99,7 +127,6 @@ class OperationalProvider with ChangeNotifier {
     _status = ProviderStatus.loading;
     _errorMessage = null;
     notifyListeners();
-
     try {
       final data = await ApiService.instance.getInventory(
         category: _categoryFilter,
@@ -116,7 +143,6 @@ class OperationalProvider with ChangeNotifier {
     notifyListeners();
   }
 
-  // FIX #2: seta _errorMessage se API falhar; dado local persiste (offline-first)
   Future<void> addItem(InventoryItem item) async {
     _items.add(item);
     notifyListeners();
@@ -133,13 +159,11 @@ class OperationalProvider with ChangeNotifier {
     final idx = _items.indexWhere(
         (i) => i.code.toUpperCase() == code.toUpperCase());
     if (idx == -1) return;
-
     final updated = _items[idx].copyWith(
       qty: (_items[idx].qty + delta).clamp(0.0, double.infinity),
     );
     _items[idx] = updated;
     notifyListeners();
-
     try {
       await ApiService.instance.updateInventoryBalance(code, delta, reason);
     } catch (e) {
@@ -148,7 +172,6 @@ class OperationalProvider with ChangeNotifier {
     }
   }
 
-  // FIX #2: remove localmente e notifica erro de API sem reverter (offline-first)
   Future<void> removeItem(String code) async {
     _items.removeWhere(
         (i) => i.code.toUpperCase() == code.toUpperCase());

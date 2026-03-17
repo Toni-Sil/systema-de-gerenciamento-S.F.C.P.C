@@ -17,11 +17,8 @@ class ChatMessage {
   bool get isUser => role == MessageRole.user;
   bool get isAgent => role == MessageRole.agent;
 
-  /// FIX #3: text vazio só é válido quando isLoading=true.
-  /// Qualquer widget deve checar isLoading ANTES de acessar text.
   bool get hasText => !isLoading && text.isNotEmpty;
 
-  /// Mensagem de loading do agente (typing indicator)
   factory ChatMessage.typing() => ChatMessage(
         text: '',
         role: MessageRole.agent,
@@ -29,13 +26,32 @@ class ChatMessage {
         isLoading: true,
       );
 
-  /// Saudação inicial dinâmica
-  factory ChatMessage.greeting(String name, {String? lowStockItem}) {
-    final stock = lowStockItem != null
-        ? ' O nível de estoque de **$lowStockItem** está baixo. Posso sugerir um pedido ao fornecedor?'
-        : ' Como posso ajudar hoje?';
+  /// Saudação enriquecida com resumo financeiro e de estoque
+  factory ChatMessage.greeting(
+    String name, {
+    String? lowStockItem,
+    String? financialAlert,  // vencimentos próximos
+    String? restockAlert,    // custo de reposição
+  }) {
+    final parts = <String>['Olá, $name!'];
+
+    if (financialAlert != null && financialAlert.isNotEmpty) {
+      parts.add(financialAlert);
+    }
+    if (restockAlert != null && restockAlert.isNotEmpty) {
+      parts.add(restockAlert);
+    }
+    if (financialAlert == null && restockAlert == null) {
+      if (lowStockItem != null) {
+        parts.add(
+            'O nível de estoque de **$lowStockItem** está baixo. Posso sugerir um pedido ao fornecedor?');
+      } else {
+        parts.add('Tudo em ordem por aqui. Como posso ajudar hoje?');
+      }
+    }
+
     return ChatMessage(
-      text: 'Olá $name!$stock',
+      text: parts.join(' '),
       role: MessageRole.agent,
       timestamp: DateTime.now(),
     );
