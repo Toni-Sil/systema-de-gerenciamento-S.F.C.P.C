@@ -11,13 +11,13 @@
     <uses-feature android:name="android.hardware.camera" android:required="false" />
     <uses-feature android:name="android.hardware.camera.autofocus" android:required="false" />
 
-    <!-- Armazenamento (PDF gerado, cache offline Hive) -->
+    <!-- Armazenamento (PDF, Hive cache) -->
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"
         android:maxSdkVersion="32" />
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"
         android:maxSdkVersion="29" />
 
-    <!-- Android 13+ (PDF / share_plus) -->
+    <!-- Android 13+ media -->
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
     <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
     <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />
@@ -25,16 +25,26 @@
     <!-- Vibração (HapticFeedback) -->
     <uses-permission android:name="android.permission.VIBRATE" />
 
-    <!-- Flashlight (mobile_scanner — torch toggle) -->
+    <!-- Flashlight (mobile_scanner torch) -->
     <uses-permission android:name="android.permission.FLASHLIGHT" />
+
+    <!-- FIX: Notificações agendadas — obrigatórias para flutter_local_notifications -->
+    <!-- Android 13+: exibir notificações -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- Android 12+: alarme exato (zonedSchedule / exactAllowWhileIdle) -->
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+    <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
+    <!-- Reiniciar alarmes após reboot do aparelho -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+
+    <!-- Microfone (speech_to_text — comando de voz agenda) -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
 
     <application
         android:label="S.F.C.P.C"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"
         android:usesCleartextTraffic="true">
-
-        <!-- usesCleartextTraffic=true permite HTTP local (backend dev sem HTTPS) -->
 
         <activity
             android:name=".MainActivity"
@@ -56,6 +66,23 @@
             </intent-filter>
         </activity>
 
+        <!-- FIX: Receiver para reagendar notificações após reboot -->
+        <receiver
+            android:name="com.dexterous.flutterlocalnotifications.ScheduledNotificationBootReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+                <action android:name="android.intent.action.QUICKBOOT_POWERON" />
+                <action android:name="com.htc.intent.action.QUICKBOOT_POWERON" />
+            </intent-filter>
+        </receiver>
+
+        <!-- Receiver para alarmes exatos -->
+        <receiver
+            android:name="com.dexterous.flutterlocalnotifications.ScheduledNotificationReceiver"
+            android:exported="false" />
+
         <!-- Flutter embedding -->
         <meta-data
             android:name="flutterEmbedding"
@@ -75,11 +102,8 @@
 
     <!-- Queries para url_launcher (WhatsApp, browser) -->
     <queries>
-        <!-- WhatsApp -->
         <package android:name="com.whatsapp" />
         <package android:name="com.whatsapp.w4b" />
-
-        <!-- Browsers (url_launcher) -->
         <intent>
             <action android:name="android.intent.action.VIEW" />
             <data android:scheme="https" />
@@ -88,14 +112,10 @@
             <action android:name="android.intent.action.VIEW" />
             <data android:scheme="http" />
         </intent>
-
-        <!-- Share -->
         <intent>
             <action android:name="android.intent.action.SEND" />
             <data android:mimeType="*/*" />
         </intent>
-
-        <!-- ProcessText (Flutter engine) -->
         <intent>
             <action android:name="android.intent.action.PROCESS_TEXT" />
             <data android:mimeType="text/plain" />

@@ -1,3 +1,5 @@
+// FIX: import 'dart:ui' movido para o topo; Color não duplicado
+import 'dart:ui' show Color;
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:timezone/timezone.dart' as tz;
 import 'package:timezone/data/latest.dart' as tz_data;
@@ -21,14 +23,20 @@ class NotificationService {
 
     await _plugin.initialize(
       settings,
-      onDidReceiveNotificationResponse: (details) {},
+      onDidReceiveNotificationResponse: (_) {},
     );
 
-    // Solicita permissão (Android 13+)
+    // Solicita permissão de notificação (Android 13+)
     await _plugin
         .resolvePlatformSpecificImplementation<
             AndroidFlutterLocalNotificationsPlugin>()
         ?.requestNotificationsPermission();
+
+    // Solicita permissão de alarme exato (Android 12+)
+    await _plugin
+        .resolvePlatformSpecificImplementation<
+            AndroidFlutterLocalNotificationsPlugin>()
+        ?.requestExactAlarmsPermission();
 
     _initialized = true;
   }
@@ -36,30 +44,32 @@ class NotificationService {
   Future<void> scheduleEventNotification(AgendaEvent event) async {
     if (!_initialized) await init();
 
-    final notifyAt = event.dateTime
-        .subtract(Duration(minutes: event.notifyMinutes));
-
+    final notifyAt =
+        event.dateTime.subtract(Duration(minutes: event.notifyMinutes));
     if (notifyAt.isBefore(DateTime.now())) return;
 
-    final id = _eventToNotificationId(event.id);
+    final id = _toNotificationId(event.id);
 
-    const androidDetails = AndroidNotificationDetails(
+    final androidDetails = AndroidNotificationDetails(
       'agenda_channel',
       'Agenda S.F.C.P.C',
       channelDescription: 'Lembretes de eventos da agenda',
       importance: Importance.high,
       priority: Priority.high,
       icon: '@mipmap/ic_launcher',
-      color: Color(0xFF00E5FF),
+      color: const Color(0xFF00E5FF),
+      styleInformation: BigTextStyleInformation(
+        '${event.formattedTime} — em ${event.notifyMinutes} minutos'
+        '${event.location != null ? ' • ${event.location}' : ''}',
+      ),
     );
 
     await _plugin.zonedSchedule(
       id,
-      '⏰ Lembrete: ${event.title}',
-      '${event.formattedTime} — em ${event.notifyMinutes} minutos'
-          '${event.location != null ? ' • ${event.location}' : ''}',
+      '⏰ ${event.title}',
+      '${event.formattedTime} — em ${event.notifyMinutes} minutos',
       tz.TZDateTime.from(notifyAt, tz.local),
-      const NotificationDetails(android: androidDetails),
+      NotificationDetails(android: androidDetails),
       androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
     );
   }
@@ -91,17 +101,10 @@ class NotificationService {
   }
 
   Future<void> cancelNotification(String eventId) async {
-    await _plugin.cancel(_eventToNotificationId(eventId));
+    await _plugin.cancel(_toNotificationId(eventId));
   }
 
-  Future<void> cancelAll() async {
-    await _plugin.cancelAll();
-  }
+  Future<void> cancelAll() async => await _plugin.cancelAll();
 
-  int _eventToNotificationId(String id) {
-    return id.hashCode.abs() % 100000;
-  }
+  int _toNotificationId(String id) => id.hashCode.abs() % 100000;
 }
-
-// Import necessário para Color
-import 'dart:ui' show Color;
