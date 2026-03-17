@@ -28,23 +28,26 @@
     <!-- Flashlight (mobile_scanner torch) -->
     <uses-permission android:name="android.permission.FLASHLIGHT" />
 
-    <!-- FIX: Notificações agendadas — obrigatórias para flutter_local_notifications -->
-    <!-- Android 13+: exibir notificações -->
+    <!-- Notificações agendadas -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
-    <!-- Android 12+: alarme exato (zonedSchedule / exactAllowWhileIdle) -->
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
     <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
-    <!-- Reiniciar alarmes após reboot do aparelho -->
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
-    <!-- Microfone (speech_to_text — comando de voz agenda) -->
+    <!-- Microfone (speech_to_text) -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
 
     <application
         android:label="S.F.C.P.C"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"
-        android:usesCleartextTraffic="true">
+        android:usesCleartextTraffic="false">
+        <!--
+            SEC #3: usesCleartextTraffic="false" bloqueia HTTP em produção.
+            Configure HTTPS no VPS antes de publicar.
+            Para testes locais (debug), crie res/xml/network_security_config.xml
+            permitindo cleartext apenas para 10.0.2.2 e localhost.
+        -->
 
         <activity
             android:name=".MainActivity"
@@ -66,7 +69,7 @@
             </intent-filter>
         </activity>
 
-        <!-- FIX: Receiver para reagendar notificações após reboot -->
+        <!-- Receiver para reagendar notificações após reboot -->
         <receiver
             android:name="com.dexterous.flutterlocalnotifications.ScheduledNotificationBootReceiver"
             android:exported="false">

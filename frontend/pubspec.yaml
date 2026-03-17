@@ -6,6 +6,12 @@ version: 1.2.0+3
 environment:
   sdk: ^3.11.1
 
+# Plataformas suportadas: apenas Android
+flutter:
+  uses-material-design: true
+  # Restringe o projeto a Android exclusivamente
+  # Para remover ios/web do build, use: flutter config --no-enable-ios --no-enable-web
+
 dependencies:
   flutter:
     sdk: flutter
@@ -27,35 +33,30 @@ dependencies:
   hive: ^2.2.3
   hive_flutter: ^1.1.0
 
-  # Secure Storage (SEC #1 — AES-256 via Android Keystore)
+  # Secure Storage (AES-256 via Android Keystore)
   flutter_secure_storage: ^9.2.4
 
-  # Scanner (Sprint 1)
+  # Scanner
   mobile_scanner: ^5.2.3
 
-  # WhatsApp / Share (Sprint 2)
+  # WhatsApp / Share
   url_launcher: ^6.3.1
   share_plus: ^10.1.4
 
-  # PDF Relatório (Sprint 2)
+  # PDF Relatório
   pdf: ^3.11.1
   printing: ^5.13.2
   path_provider: ^2.1.5
 
-  # Onboarding (Sprint 1)
+  # Onboarding
   tutorial_coach_mark: ^1.2.11
 
-  # Conectividade Offline (Sprint 4)
+  # Conectividade Offline
   connectivity_plus: ^6.1.4
 
-  # ── AGENDA MODULE (Sprint 5) ──────────────────────────────
-  # Reconhecimento de voz
+  # ── AGENDA MODULE ───────────────────────────────────
   speech_to_text: ^7.0.0
-
-  # Notificações locais agendadas
   flutter_local_notifications: ^18.0.1
-
-  # Fusos horários (necessário para zonedSchedule)
   timezone: ^0.9.4
 
 dev_dependencies:
@@ -64,6 +65,3 @@ dev_dependencies:
   flutter_lints: ^6.0.0
   hive_generator: ^2.0.1
   build_runner: ^2.4.13
-
-flutter:
-  uses-material-design: true
