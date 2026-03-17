@@ -4,6 +4,9 @@ enum EventPriority { baixa, normal, alta, urgente }
 enum EventStatus { pendente, confirmado, cancelado, concluido }
 enum EventCategory { reuniao, entrega, reposicao, financeiro, pessoal, outro }
 
+// Sentinel para distinguir "não passou" de "passou null" no copyWith
+const _omit = Object();
+
 class AgendaEvent {
   final String id;
   final String title;
@@ -13,8 +16,8 @@ class AgendaEvent {
   final EventPriority priority;
   final EventStatus status;
   final EventCategory category;
-  final bool notifyBefore; // notificar antes
-  final int notifyMinutes; // quantos minutos antes
+  final bool notifyBefore;
+  final int notifyMinutes;
   final String? location;
   final bool isVoiceCreated;
 
@@ -33,32 +36,34 @@ class AgendaEvent {
     this.isVoiceCreated = false,
   });
 
+  // FIX: copyWith com sentinel permite setar description/location/duration como null
   AgendaEvent copyWith({
     String? id,
     String? title,
-    String? description,
+    Object? description = _omit,
     DateTime? dateTime,
-    Duration? duration,
+    Object? duration = _omit,
     EventPriority? priority,
     EventStatus? status,
     EventCategory? category,
     bool? notifyBefore,
     int? notifyMinutes,
-    String? location,
+    Object? location = _omit,
     bool? isVoiceCreated,
   }) {
     return AgendaEvent(
       id: id ?? this.id,
       title: title ?? this.title,
-      description: description ?? this.description,
+      description:
+          description == _omit ? this.description : description as String?,
       dateTime: dateTime ?? this.dateTime,
-      duration: duration ?? this.duration,
+      duration: duration == _omit ? this.duration : duration as Duration?,
       priority: priority ?? this.priority,
       status: status ?? this.status,
       category: category ?? this.category,
       notifyBefore: notifyBefore ?? this.notifyBefore,
       notifyMinutes: notifyMinutes ?? this.notifyMinutes,
-      location: location ?? this.location,
+      location: location == _omit ? this.location : location as String?,
       isVoiceCreated: isVoiceCreated ?? this.isVoiceCreated,
     );
   }
@@ -79,12 +84,12 @@ class AgendaEvent {
       };
 
   factory AgendaEvent.fromJson(Map<String, dynamic> json) => AgendaEvent(
-        id: json['id'],
-        title: json['title'],
-        description: json['description'],
-        dateTime: DateTime.parse(json['dateTime']),
+        id: json['id'] as String,
+        title: json['title'] as String,
+        description: json['description'] as String?,
+        dateTime: DateTime.parse(json['dateTime'] as String),
         duration: json['durationMinutes'] != null
-            ? Duration(minutes: json['durationMinutes'])
+            ? Duration(minutes: json['durationMinutes'] as int)
             : null,
         priority: EventPriority.values.firstWhere(
             (e) => e.name == json['priority'],
@@ -95,10 +100,10 @@ class AgendaEvent {
         category: EventCategory.values.firstWhere(
             (e) => e.name == json['category'],
             orElse: () => EventCategory.outro),
-        notifyBefore: json['notifyBefore'] ?? true,
-        notifyMinutes: json['notifyMinutes'] ?? 30,
-        location: json['location'],
-        isVoiceCreated: json['isVoiceCreated'] ?? false,
+        notifyBefore: json['notifyBefore'] as bool? ?? true,
+        notifyMinutes: json['notifyMinutes'] as int? ?? 30,
+        location: json['location'] as String?,
+        isVoiceCreated: json['isVoiceCreated'] as bool? ?? false,
       );
 
   bool get isToday {
@@ -148,6 +153,15 @@ class AgendaEvent {
   }
 
   String get formattedDate {
-    return '${dateTime.day.toString().padLeft(2, '0')}/${dateTime.month.toString().padLeft(2, '0')}/${dateTime.year}';
+    return '${dateTime.day.toString().padLeft(2, '0')}'
+        '/${dateTime.month.toString().padLeft(2, '0')}'
+        '/${dateTime.year}';
   }
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) || (other is AgendaEvent && other.id == id);
+
+  @override
+  int get hashCode => id.hashCode;
 }
