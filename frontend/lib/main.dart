@@ -1,3 +1,4 @@
+// SEC #4: AgendaProvider.init() chamado no bootstrap
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -13,7 +14,6 @@ import 'core/services/offline_sync_service.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Barra de status transparente
   SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
     statusBarColor: Colors.transparent,
     statusBarIconBrightness: Brightness.light,
@@ -21,7 +21,6 @@ void main() async {
     systemNavigationBarIconBrightness: Brightness.light,
   ));
 
-  // Orientação apenas retrato
   await SystemChrome.setPreferredOrientations([
     DeviceOrientation.portraitUp,
     DeviceOrientation.portraitDown,
@@ -32,6 +31,10 @@ void main() async {
   final userProvider = UserProvider();
   await userProvider.init();
 
+  // SEC #4: AgendaProvider inicializado no boot para carregar eventos e notificações
+  final agendaProvider = AgendaProvider();
+  await agendaProvider.init();
+
   final prefs = await SharedPreferences.getInstance();
   final onboardingDone = prefs.getBool('onboarding_done') ?? false;
 
@@ -39,9 +42,8 @@ void main() async {
     MultiProvider(
       providers: [
         ChangeNotifierProvider.value(value: userProvider),
+        ChangeNotifierProvider.value(value: agendaProvider),
         ChangeNotifierProvider(create: (_) => OperationalProvider()),
-        // FIX: AgendaProvider registrado aqui para ficar acessível em toda a árvore
-        ChangeNotifierProvider(create: (_) => AgendaProvider()),
       ],
       child: SFCpcApp(
         showOnboarding: !onboardingDone,

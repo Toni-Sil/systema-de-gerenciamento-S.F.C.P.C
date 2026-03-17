@@ -1,7 +1,9 @@
-// ApiService — singleton HTTP com JWT interceptor e baseUrl configurável
+// SEC #3: _defaultBase usa https; warn no console se URL não for HTTPS em modo release
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
+import 'secure_storage_service.dart';
 
 class ApiException implements Exception {
   final int statusCode;
@@ -11,49 +13,65 @@ class ApiException implements Exception {
   String toString() => 'ApiException($statusCode): $message';
 }
 
+/// Exceção específica para erros de autenticação (SEC #5)
+class AuthException implements Exception {
+  final String message;
+  const AuthException(this.message);
+  @override
+  String toString() => 'AuthException: $message';
+}
+
 class ApiService {
   ApiService._();
   static final ApiService instance = ApiService._();
 
   static const _baseUrlKey = 'api_base_url';
-  static const _tokenKey = 'jwt_token';
-  static const _defaultBase = 'http://localhost:8000';
+  // SEC #3: default agora é https
+  static const _defaultBase = 'https://localhost:8000';
 
   String _baseUrl = _defaultBase;
   String? _token;
 
-  /// Carrega baseUrl e token salvos
   Future<void> init() async {
     final prefs = await SharedPreferences.getInstance();
     _baseUrl = prefs.getString(_baseUrlKey) ?? _defaultBase;
-    _token = prefs.getString(_tokenKey);
+    // SEC #1: token lido do secure storage
+    _token = await SecureStorageService.instance.readToken();
+    _warnInsecureUrl(_baseUrl);
   }
 
-  /// Atualiza a URL base da API (salva no SharedPreferences)
   Future<void> setBaseUrl(String url) async {
-    _baseUrl = url.endsWith('/') ? url.substring(0, url.length - 1) : url;
+    final normalized =
+        url.endsWith('/') ? url.substring(0, url.length - 1) : url;
+    _warnInsecureUrl(normalized);
+    _baseUrl = normalized;
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_baseUrlKey, _baseUrl);
+  }
+
+  /// SEC #3: avisa no console se URL não usar HTTPS em release
+  void _warnInsecureUrl(String url) {
+    if (!kDebugMode && url.startsWith('http://')) {
+      debugPrint(
+          '[ApiService] ⚠️ SECURITY WARNING: URL não usa HTTPS: $url\n'
+          'Dados tráfegam sem criptografia. Configure HTTPS no VPS.');
+    }
   }
 
   String get baseUrl => _baseUrl;
   bool get hasToken => _token != null && _token!.isNotEmpty;
 
-  /// Salva o JWT após login
+  // SEC #1: token salvo no secure storage
   Future<void> setToken(String token) async {
     _token = token;
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_tokenKey, token);
+    await SecureStorageService.instance.writeToken(token);
   }
 
-  /// Limpa o JWT (logout)
   Future<void> clearToken() async {
     _token = null;
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.remove(_tokenKey);
+    await SecureStorageService.instance.deleteToken();
   }
 
-  /// Headers padrão com Authorization Bearer
   Map<String, String> get _headers => {
         'Content-Type': 'application/json',
         'Accept': 'application/json',
@@ -69,6 +87,10 @@ class ApiService {
     if (res.statusCode >= 200 && res.statusCode < 300) {
       return jsonDecode(res.body) as Map<String, dynamic>;
     }
+    // SEC #5: 401/403 lançam AuthException para UI distinguir
+    if (res.statusCode == 401 || res.statusCode == 403) {
+      throw const AuthException('Credenciais inválidas ou sessão expirada.');
+    }
     throw ApiException(res.statusCode,
         (jsonDecode(res.body) as Map?)?['detail']?.toString() ?? res.body);
   }
@@ -78,21 +100,27 @@ class ApiService {
       final body = jsonDecode(res.body);
       return body is List ? body : (body['items'] as List? ?? []);
     }
+    if (res.statusCode == 401 || res.statusCode == 403) {
+      throw const AuthException('Sessão expirada. Faça login novamente.');
+    }
     throw ApiException(res.statusCode,
         (jsonDecode(res.body) as Map?)?['detail']?.toString() ?? res.body);
   }
 
-  // ─── INVENTORY ─────────────────────────────────────────────────────────────
+  // ─── INVENTORY ───────────────────────────────────────────────────────────
 
-  Future<List<dynamic>> getInventory({String? category, String? search}) async {
+  Future<List<dynamic>> getInventory(
+      {String? category, String? search}) async {
     final params = <String, String>{};
     if (category != null) params['category'] = category;
     if (search != null && search.isNotEmpty) params['search'] = search;
-    final res = await http.get(_uri('/api/v1/inventory', params), headers: _headers);
+    final res = await http.get(_uri('/api/v1/inventory', params),
+        headers: _headers);
     return _parseList(res);
   }
 
-  Future<Map<String, dynamic>> addInventoryItem(Map<String, dynamic> item) async {
+  Future<Map<String, dynamic>> addInventoryItem(
+      Map<String, dynamic> item) async {
     final res = await http.post(_uri('/api/v1/inventory'),
         headers: _headers, body: jsonEncode(item));
     return _parse(res);
@@ -109,14 +137,15 @@ class ApiService {
   }
 
   Future<void> deleteInventoryItem(String code) async {
-    final res =
-        await http.delete(_uri('/api/v1/inventory/$code'), headers: _headers);
+    final res = await http.delete(
+        _uri('/api/v1/inventory/$code'),
+        headers: _headers);
     if (res.statusCode != 204 && res.statusCode != 200) {
       throw ApiException(res.statusCode, 'Falha ao deletar item');
     }
   }
 
-  // ─── AGENT ─────────────────────────────────────────────────────────────────
+  // ─── AGENT ───────────────────────────────────────────────────────────────
 
   Future<Map<String, dynamic>> sendAgentMessage(String message,
       {String? context}) async {
@@ -131,11 +160,11 @@ class ApiService {
     return _parse(res);
   }
 
-  // ─── FINANCIAL ─────────────────────────────────────────────────────────────
+  // ─── FINANCIAL ───────────────────────────────────────────────────────────
 
   Future<Map<String, dynamic>> getFinancialSummary() async {
-    final res =
-        await http.get(_uri('/api/v1/financial/summary'), headers: _headers);
+    final res = await http.get(
+        _uri('/api/v1/financial/summary'), headers: _headers);
     return _parse(res);
   }
 
@@ -149,7 +178,7 @@ class ApiService {
     return _parseList(res);
   }
 
-  // ─── AUTH ──────────────────────────────────────────────────────────────────
+  // ─── AUTH ─────────────────────────────────────────────────────────────────
 
   Future<Map<String, dynamic>> login(
       String email, String password) async {
@@ -161,7 +190,7 @@ class ApiService {
     return _parse(res);
   }
 
-  // ─── FORECAST ──────────────────────────────────────────────────────────────
+  // ─── FORECAST ────────────────────────────────────────────────────────────
 
   Future<Map<String, dynamic>> getForecast(String itemCode) async {
     final res = await http.get(
