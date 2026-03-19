@@ -1,3 +1,4 @@
+// agenda_screen v2 — light/dark adaptativo
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -123,29 +124,32 @@ class _AgendaScreenState extends State<AgendaScreen>
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final textHigh = isDark ? AppColors.textHigh : const Color(0xFF1A1A1A);
+    final textLow = isDark ? AppColors.textLow : const Color(0xFF757575);
+    final bgBase = isDark ? AppColors.bgBase : const Color(0xFFF8F8F8);
+
     final agenda = context.watch<AgendaProvider>();
     return Scaffold(
-      backgroundColor: AppColors.bgBase,
+      backgroundColor: bgBase,
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('Agenda',
+            Text('Agenda',
                 style: TextStyle(
                     fontSize: 18,
                     fontWeight: FontWeight.bold,
-                    color: AppColors.textHigh)),
+                    color: textHigh)),
             Text('${agenda.todayCount} evento(s) hoje',
-                style: const TextStyle(
-                    fontSize: 11, color: AppColors.textLow)),
+                style: TextStyle(fontSize: 11, color: textLow)),
           ],
         ),
         actions: [
           IconButton(
-            icon: const Icon(Icons.notifications_outlined,
-                color: AppColors.textLow),
+            icon: Icon(Icons.notifications_outlined, color: textLow),
             onPressed: () => NotificationService.instance
                 .showDailySummary(agenda.todaySummaryForAgent),
             tooltip: 'Resumo do dia',
@@ -159,16 +163,17 @@ class _AgendaScreenState extends State<AgendaScreen>
       ),
       body: Column(
         children: [
-          _buildWeekStrip(agenda),
-          _buildTodaySummaryCard(agenda),
-          Expanded(child: _buildEventList(agenda)),
+          _buildWeekStrip(agenda, textHigh, textLow),
+          _buildTodaySummaryCard(agenda, textLow),
+          Expanded(child: _buildEventList(agenda, textLow)),
         ],
       ),
-      floatingActionButton: _buildVoiceFab(),
+      floatingActionButton: _buildVoiceFab(textHigh),
     );
   }
 
-  Widget _buildWeekStrip(AgendaProvider agenda) {
+  Widget _buildWeekStrip(
+      AgendaProvider agenda, Color textHigh, Color textLow) {
     final today = DateTime.now();
     final monday = today.subtract(Duration(days: today.weekday - 1));
     final days = List.generate(7, (i) => monday.add(Duration(days: i)));
@@ -204,7 +209,7 @@ class _AgendaScreenState extends State<AgendaScreen>
                         ? AppColors.neonCyan
                         : isToday
                             ? AppColors.neonCyan.withValues(alpha: 0.4)
-                            : AppColors.border,
+                            : Theme.of(context).dividerColor,
                   ),
                 ),
                 child: Column(
@@ -217,7 +222,7 @@ class _AgendaScreenState extends State<AgendaScreen>
                         fontSize: 10,
                         color: isSelected
                             ? AppColors.neonCyan
-                            : AppColors.textLow,
+                            : textLow,
                       ),
                     ),
                     const SizedBox(height: 4),
@@ -227,7 +232,7 @@ class _AgendaScreenState extends State<AgendaScreen>
                           fontWeight: FontWeight.bold,
                           color: isSelected
                               ? AppColors.neonCyan
-                              : AppColors.textHigh,
+                              : textHigh,
                         )),
                     if (hasEvents)
                       Container(
@@ -250,7 +255,7 @@ class _AgendaScreenState extends State<AgendaScreen>
     );
   }
 
-  Widget _buildTodaySummaryCard(AgendaProvider agenda) {
+  Widget _buildTodaySummaryCard(AgendaProvider agenda, Color textMed) {
     if (agenda.todayCount == 0) return const SizedBox.shrink();
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
@@ -264,8 +269,7 @@ class _AgendaScreenState extends State<AgendaScreen>
             Expanded(
               child: Text(
                 agenda.todaySummaryForAgent,
-                style: const TextStyle(
-                    fontSize: 12, color: AppColors.textMed),
+                style: TextStyle(fontSize: 12, color: textMed),
                 maxLines: 3,
                 overflow: TextOverflow.ellipsis,
               ),
@@ -276,7 +280,7 @@ class _AgendaScreenState extends State<AgendaScreen>
     );
   }
 
-  Widget _buildEventList(AgendaProvider agenda) {
+  Widget _buildEventList(AgendaProvider agenda, Color textLow) {
     final events = agenda.selectedDayEvents;
     if (events.isEmpty) {
       return Center(
@@ -284,11 +288,10 @@ class _AgendaScreenState extends State<AgendaScreen>
           mainAxisSize: MainAxisSize.min,
           children: [
             Icon(Icons.event_available,
-                size: 56,
-                color: AppColors.textLow.withValues(alpha: 0.4)),
+                size: 56, color: textLow.withValues(alpha: 0.4)),
             const SizedBox(height: 12),
-            const Text('Nenhum evento neste dia',
-                style: TextStyle(color: AppColors.textLow)),
+            Text('Nenhum evento neste dia',
+                style: TextStyle(color: textLow)),
             const SizedBox(height: 8),
             TextButton.icon(
               onPressed: () => _showAddEventDialog(context),
@@ -301,14 +304,18 @@ class _AgendaScreenState extends State<AgendaScreen>
     }
     return ListView.builder(
       padding: EdgeInsets.fromLTRB(
-          16, 8, 16, MediaQuery.of(context).padding.bottom + 80),
+          16, 8, 16, MediaQuery.of(context).padding.bottom + 100),
       itemCount: events.length,
       itemBuilder: (_, i) => _buildEventCard(events[i], agenda),
     );
   }
 
-  // FIX #4: usa FlatCard (sem BackdropFilter) nos cards de lista
   Widget _buildEventCard(AgendaEvent event, AgendaProvider agenda) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final cardBg = isDark ? AppColors.bgCard : const Color(0xFFF5F5F5);
+    final textHigh = isDark ? AppColors.textHigh : const Color(0xFF1A1A1A);
+    final textLow = isDark ? AppColors.textLow : const Color(0xFF757575);
+
     return Dismissible(
       key: Key(event.id),
       direction: DismissDirection.endToStart,
@@ -316,11 +323,11 @@ class _AgendaScreenState extends State<AgendaScreen>
         return await showDialog<bool>(
           context: context,
           builder: (ctx) => AlertDialog(
-            backgroundColor: AppColors.bgCard,
-            title: const Text('Excluir evento?',
-                style: TextStyle(color: AppColors.textHigh)),
+            backgroundColor: cardBg,
+            title: Text('Excluir evento?',
+                style: TextStyle(color: textHigh)),
             content: Text('"${event.title}" será removido.',
-                style: const TextStyle(color: AppColors.textMed)),
+                style: TextStyle(color: textLow)),
             actions: [
               TextButton(
                   onPressed: () => Navigator.pop(ctx, false),
@@ -346,7 +353,6 @@ class _AgendaScreenState extends State<AgendaScreen>
       ),
       child: Container(
         margin: const EdgeInsets.only(bottom: 10),
-        // FIX #4: FlatCard em vez de GlassCard
         child: FlatCard(
           onTap: () => _showEventDetail(context, event, agenda),
           borderColor: event.priorityColor.withValues(alpha: 0.5),
@@ -364,14 +370,13 @@ class _AgendaScreenState extends State<AgendaScreen>
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(event.formattedTime,
-                      style: const TextStyle(
+                      style: TextStyle(
                           fontSize: 18,
                           fontWeight: FontWeight.w800,
-                          color: AppColors.textHigh)),
+                          color: textHigh)),
                   if (event.duration != null)
                     Text('${event.duration!.inMinutes}min',
-                        style: const TextStyle(
-                            fontSize: 10, color: AppColors.textLow)),
+                        style: TextStyle(fontSize: 10, color: textLow)),
                 ],
               ),
               const SizedBox(width: 14),
@@ -382,7 +387,7 @@ class _AgendaScreenState extends State<AgendaScreen>
                     Row(
                       children: [
                         Icon(event.categoryIcon,
-                            size: 14, color: AppColors.textLow),
+                            size: 14, color: textLow),
                         const SizedBox(width: 4),
                         Expanded(
                           child: Text(
@@ -391,8 +396,8 @@ class _AgendaScreenState extends State<AgendaScreen>
                               fontSize: 14,
                               fontWeight: FontWeight.w600,
                               color: event.status == EventStatus.concluido
-                                  ? AppColors.textLow
-                                  : AppColors.textHigh,
+                                  ? textLow
+                                  : textHigh,
                               decoration:
                                   event.status == EventStatus.concluido
                                       ? TextDecoration.lineThrough
@@ -406,20 +411,19 @@ class _AgendaScreenState extends State<AgendaScreen>
                     if (event.description != null) ...[
                       const SizedBox(height: 3),
                       Text(event.description!,
-                          style: const TextStyle(
-                              fontSize: 11, color: AppColors.textLow),
+                          style: TextStyle(fontSize: 11, color: textLow),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis),
                     ],
                     if (event.location != null) ...[
                       const SizedBox(height: 3),
                       Row(children: [
-                        const Icon(Icons.location_on_outlined,
-                            size: 11, color: AppColors.textLow),
+                        Icon(Icons.location_on_outlined,
+                            size: 11, color: textLow),
                         const SizedBox(width: 3),
                         Text(event.location!,
-                            style: const TextStyle(
-                                fontSize: 11, color: AppColors.textLow)),
+                            style: TextStyle(
+                                fontSize: 11, color: textLow)),
                       ]),
                     ],
                   ],
@@ -428,9 +432,9 @@ class _AgendaScreenState extends State<AgendaScreen>
               Column(
                 children: [
                   if (event.isVoiceCreated)
-                    const Padding(
-                      padding: EdgeInsets.only(bottom: 6),
-                      child: Icon(Icons.mic,
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 6),
+                      child: const Icon(Icons.mic,
                           size: 12, color: AppColors.neonCyan),
                     ),
                   if (event.status != EventStatus.concluido)
@@ -456,7 +460,7 @@ class _AgendaScreenState extends State<AgendaScreen>
     );
   }
 
-  Widget _buildVoiceFab() {
+  Widget _buildVoiceFab(Color textHigh) {
     return Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.end,
@@ -467,14 +471,13 @@ class _AgendaScreenState extends State<AgendaScreen>
             padding:
                 const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             decoration: BoxDecoration(
-              color: AppColors.bgCard,
+              color: Theme.of(context).colorScheme.surface,
               borderRadius: BorderRadius.circular(20),
               border: Border.all(
                   color: AppColors.neonCyan.withValues(alpha: 0.4)),
             ),
             child: Text(_voicePartial,
-                style: const TextStyle(
-                    color: AppColors.textHigh, fontSize: 13)),
+                style: TextStyle(color: textHigh, fontSize: 13)),
           ),
         AnimatedBuilder(
           animation: _pulseAnim,
@@ -496,12 +499,15 @@ class _AgendaScreenState extends State<AgendaScreen>
     );
   }
 
-  // FIX #5: usa Uid.generate() e ctx local capturado do StatefulBuilder
   void _showAddEventDialog(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final sheetBg = isDark ? AppColors.bgCard : Colors.white;
+    final textHigh = isDark ? AppColors.textHigh : const Color(0xFF1A1A1A);
+    final textLow = isDark ? AppColors.textLow : const Color(0xFF757575);
+
     final titleCtrl = TextEditingController();
     final descCtrl = TextEditingController();
     final localCtrl = TextEditingController();
-    // Captura provider antes de abrir o sheet — safe mesmo se tela desmontar
     final agendaProvider = context.read<AgendaProvider>();
     final initialDay = agendaProvider.selectedDay;
     DateTime selectedDate = initialDay;
@@ -513,7 +519,7 @@ class _AgendaScreenState extends State<AgendaScreen>
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      backgroundColor: AppColors.bgCard,
+      backgroundColor: sheetBg,
       shape: const RoundedRectangleBorder(
           borderRadius:
               BorderRadius.vertical(top: Radius.circular(24))),
@@ -529,16 +535,15 @@ class _AgendaScreenState extends State<AgendaScreen>
               children: [
                 Row(
                   children: [
-                    const Expanded(
+                    Expanded(
                       child: Text('Novo Evento',
                           style: TextStyle(
                               fontSize: 18,
                               fontWeight: FontWeight.bold,
-                              color: AppColors.textHigh)),
+                              color: textHigh)),
                     ),
                     IconButton(
-                      icon: const Icon(Icons.close,
-                          color: AppColors.textLow),
+                      icon: Icon(Icons.close, color: textLow),
                       onPressed: () => Navigator.pop(sheetCtx),
                     ),
                   ],
@@ -548,7 +553,6 @@ class _AgendaScreenState extends State<AgendaScreen>
                   controller: titleCtrl,
                   decoration:
                       const InputDecoration(labelText: 'Título *'),
-                  style: const TextStyle(color: AppColors.textHigh),
                   autofocus: true,
                   textCapitalization: TextCapitalization.sentences,
                 ),
@@ -557,7 +561,6 @@ class _AgendaScreenState extends State<AgendaScreen>
                   controller: descCtrl,
                   decoration:
                       const InputDecoration(labelText: 'Descrição'),
-                  style: const TextStyle(color: AppColors.textHigh),
                   maxLines: 2,
                 ),
                 const SizedBox(height: 12),
@@ -566,7 +569,6 @@ class _AgendaScreenState extends State<AgendaScreen>
                   decoration: const InputDecoration(
                       labelText: 'Local',
                       prefixIcon: Icon(Icons.location_on_outlined)),
-                  style: const TextStyle(color: AppColors.textHigh),
                 ),
                 const SizedBox(height: 16),
                 Row(
@@ -598,17 +600,15 @@ class _AgendaScreenState extends State<AgendaScreen>
                               initialTime: selectedTime);
                           if (t != null) setS(() => selectedTime = t);
                         },
-                        icon:
-                            const Icon(Icons.access_time, size: 14),
+                        icon: const Icon(Icons.access_time, size: 14),
                         label: Text(selectedTime.format(sheetCtx)),
                       ),
                     ),
                   ],
                 ),
                 const SizedBox(height: 12),
-                const Text('Categoria',
-                    style: TextStyle(
-                        fontSize: 12, color: AppColors.textLow)),
+                Text('Categoria',
+                    style: TextStyle(fontSize: 12, color: textLow)),
                 const SizedBox(height: 6),
                 Wrap(
                   spacing: 6, runSpacing: 4,
@@ -629,9 +629,8 @@ class _AgendaScreenState extends State<AgendaScreen>
                   }).toList(),
                 ),
                 const SizedBox(height: 12),
-                const Text('Prioridade',
-                    style: TextStyle(
-                        fontSize: 12, color: AppColors.textLow)),
+                Text('Prioridade',
+                    style: TextStyle(fontSize: 12, color: textLow)),
                 const SizedBox(height: 6),
                 Wrap(
                   spacing: 6,
@@ -652,14 +651,13 @@ class _AgendaScreenState extends State<AgendaScreen>
                 const SizedBox(height: 12),
                 Row(
                   children: [
-                    const Text('Notificar',
-                        style: TextStyle(color: AppColors.textMed)),
+                    Text('Notificar',
+                        style: TextStyle(color: textLow)),
                     const SizedBox(width: 8),
                     DropdownButton<int>(
                       value: notifyMin,
-                      dropdownColor: AppColors.bgCard,
-                      style: const TextStyle(
-                          color: AppColors.textHigh),
+                      dropdownColor: sheetBg,
+                      style: TextStyle(color: textHigh),
                       items: [10, 15, 30, 60, 120].map((m) {
                         return DropdownMenuItem(
                           value: m,
@@ -692,8 +690,6 @@ class _AgendaScreenState extends State<AgendaScreen>
                         selectedDate.day,
                         selectedTime.hour, selectedTime.minute,
                       );
-                      // FIX #5: usa agendaProvider capturado antes do sheet
-                      // FIX #7: usa Uid.generate() para ID único
                       agendaProvider.addEvent(AgendaEvent(
                         id: Uid.generate(),
                         title: t,
@@ -726,9 +722,15 @@ class _AgendaScreenState extends State<AgendaScreen>
 
   void _showEventDetail(
       BuildContext context, AgendaEvent event, AgendaProvider agenda) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final sheetBg = isDark ? AppColors.bgCard : Colors.white;
+    final textHigh = isDark ? AppColors.textHigh : const Color(0xFF1A1A1A);
+    final textLow = isDark ? AppColors.textLow : const Color(0xFF757575);
+    final textMed = isDark ? AppColors.textMed : const Color(0xFF555555);
+
     showModalBottomSheet(
       context: context,
-      backgroundColor: AppColors.bgCard,
+      backgroundColor: sheetBg,
       shape: const RoundedRectangleBorder(
           borderRadius:
               BorderRadius.vertical(top: Radius.circular(24))),
@@ -745,10 +747,10 @@ class _AgendaScreenState extends State<AgendaScreen>
                 const SizedBox(width: 10),
                 Expanded(
                   child: Text(event.title,
-                      style: const TextStyle(
+                      style: TextStyle(
                           fontSize: 18,
                           fontWeight: FontWeight.bold,
-                          color: AppColors.textHigh)),
+                          color: textHigh)),
                 ),
                 Container(
                   padding: const EdgeInsets.symmetric(
@@ -770,19 +772,25 @@ class _AgendaScreenState extends State<AgendaScreen>
             ),
             const SizedBox(height: 16),
             _detailRow(Icons.calendar_today,
-                '${event.formattedDate} às ${event.formattedTime}'),
+                '${event.formattedDate} às ${event.formattedTime}',
+                textLow, textMed),
             if (event.duration != null)
               _detailRow(Icons.timer_outlined,
-                  'Duração: ${event.duration!.inMinutes} minutos'),
+                  'Duração: ${event.duration!.inMinutes} minutos',
+                  textLow, textMed),
             if (event.location != null)
               _detailRow(
-                  Icons.location_on_outlined, event.location!),
+                  Icons.location_on_outlined, event.location!,
+                  textLow, textMed),
             if (event.description != null)
-              _detailRow(Icons.notes, event.description!),
+              _detailRow(Icons.notes, event.description!,
+                  textLow, textMed),
             _detailRow(Icons.notifications_outlined,
-                'Lembrete ${event.notifyMinutes}min antes'),
+                'Lembrete ${event.notifyMinutes}min antes',
+                textLow, textMed),
             if (event.isVoiceCreated)
-              _detailRow(Icons.mic, 'Criado por voz'),
+              _detailRow(Icons.mic, 'Criado por voz',
+                  textLow, textMed),
             const SizedBox(height: 20),
             Row(
               children: [
@@ -811,11 +819,9 @@ class _AgendaScreenState extends State<AgendaScreen>
                     icon: const Icon(Icons.delete_outline,
                         color: AppColors.neonRed),
                     label: const Text('Excluir',
-                        style:
-                            TextStyle(color: AppColors.neonRed)),
+                        style: TextStyle(color: AppColors.neonRed)),
                     style: OutlinedButton.styleFrom(
-                        side: const BorderSide(
-                            color: AppColors.neonRed)),
+                        side: const BorderSide(color: AppColors.neonRed)),
                   ),
                 ),
               ],
@@ -826,17 +832,17 @@ class _AgendaScreenState extends State<AgendaScreen>
     );
   }
 
-  Widget _detailRow(IconData icon, String text) {
+  Widget _detailRow(
+      IconData icon, String text, Color iconColor, Color textColor) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
       child: Row(
         children: [
-          Icon(icon, size: 16, color: AppColors.textLow),
+          Icon(icon, size: 16, color: iconColor),
           const SizedBox(width: 10),
           Expanded(
               child: Text(text,
-                  style: const TextStyle(
-                      fontSize: 13, color: AppColors.textMed))),
+                  style: TextStyle(fontSize: 13, color: textColor))),
         ],
       ),
     );
