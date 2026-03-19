@@ -19,7 +19,8 @@ class NotificationService {
     tz.setLocalLocation(tz.getLocation('America/Sao_Paulo'));
 
     const android = AndroidInitializationSettings('@mipmap/ic_launcher');
-    const settings = InitializationSettings(android: android);
+    const linux = LinuxInitializationSettings(defaultActionName: 'Open');
+    const settings = InitializationSettings(android: android, linux: linux);
 
     await _plugin.initialize(
       settings,
@@ -69,6 +70,8 @@ class NotificationService {
       tz.TZDateTime.from(notifyAt, tz.local),
       NotificationDetails(android: androidDetails),
       androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+      uiLocalNotificationDateInterpretation:
+          UILocalNotificationDateInterpretation.absoluteTime,
     );
   }
 

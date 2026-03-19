@@ -8,16 +8,17 @@ Each route group is organized as an APIRouter and mounted with a prefix.
 import logging
 import os
 from contextlib import asynccontextmanager
-from datetime import date
+from datetime import date, timedelta
 from typing import List, Optional
 from uuid import UUID
 
-from fastapi import Depends, FastAPI, File, Form, HTTPException, Query, UploadFile
+from fastapi import Depends, FastAPI, File, Form, HTTPException, Query, UploadFile, APIRouter
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from auth.jwt_handler import verify_jwt_token
 from auth.tenant_context import get_tenant_id
+from models.entities import ProductSchema, MovementSchema, FinancialSummarySchema, ChatInputSchema
 from db.session import get_session
 from messaging.producer import producer
 from middleware.rate_limiter import RateLimiterMiddleware
@@ -100,10 +101,125 @@ async def root():
 
 
 # ---------------------------------------------------------------------------
-# Auth routes
+# API v1 Router (Unified)
 # ---------------------------------------------------------------------------
 
+v1_router = APIRouter(prefix="/api/v1", dependencies=[_auth])
+
+# Products / Inventory
+@v1_router.get("/inventory", response_model=List[ProductSchema], tags=["Inventory"])
+async def list_products(
+    limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0),
+):
+    async with get_session() as session:
+        from db.orm_models import ProductORM
+        from db.base_repository import BaseRepository
+        repo = BaseRepository(ProductORM, session)
+        return await repo.get_all(limit=limit, offset=offset)
+
+@v1_router.post("/inventory", response_model=ProductSchema, tags=["Inventory"], status_code=201)
+async def create_product(product: ProductSchema):
+    async with get_session() as session:
+        from db.orm_models import ProductORM
+        from db.base_repository import BaseRepository
+        repo = BaseRepository(ProductORM, session)
+        return await repo.create(product)
+
+@v1_router.get("/inventory/{code}", response_model=ProductSchema, tags=["Inventory"])
+async def get_product(code: str):
+    async with get_session() as session:
+        from db.orm_models import ProductORM
+        from db.base_repository import BaseRepository
+        repo = BaseRepository(ProductORM, session)
+        # Assuming code is a unique string field, but current repo uses ID.
+        # For MVP, we'll try to find by code if possible or use ID if code is UUID.
+        product = None
+        try:
+            product_id = UUID(code)
+            product = await repo.get_by_id(product_id)
+        except ValueError:
+            # Fallback or specific lookup by code (needs repo support)
+            # This assumes BaseRepository.get_one can take keyword arguments for filtering
+            product = await repo.get_one(code=code)
+
+        if not product:
+            raise HTTPException(status_code=404, detail="Product not found")
+        return product
+
+@v1_router.delete("/inventory/{code}", tags=["Inventory"], status_code=204)
+async def delete_product(code: str):
+    async with get_session() as session:
+        from db.orm_models import ProductORM
+        from db.base_repository import BaseRepository
+        repo = BaseRepository(ProductORM, session)
+        # Manual delete if repo doesn't have it or use filter
+        # This assumes BaseRepository.delete_where can take keyword arguments for filtering
+        success = await repo.delete_where(code=code)
+        if not success:
+            raise HTTPException(status_code=404, detail="Product not found")
+        return None
+
+# Stock / Movements
+@v1_router.post("/inventory/{code}/balance", response_model=StockBalanceSchema, tags=["Inventory"], status_code=201)
+async def update_balance(code: str, data: dict):
+    delta = data.get("delta", 0)
+    reason = data.get("reason", "Ajuste")
+    async with get_session() as session:
+        from models.entities import MovementSchema
+        movement = MovementSchema(product_code=code, quantity=delta, type="ENTRY" if delta > 0 else "EXIT", reason=reason)
+        return await StockService.process_movement(movement, session)
+
+# Finance
+@v1_router.get("/financial/summary", response_model=FinancialSummarySchema, tags=["Finance"])
+async def financial_summary(
+    period: str = Query("30d"),
+):
+    # Mocking implementation to match frontend simplified period
+    tenant_id = get_tenant_id()
+    if not tenant_id:
+        raise HTTPException(status_code=403, detail="Tenant context missing")
+    async with get_session() as session:
+        # date logic based on period '30d' etc
+        end_date = date.today()
+        days = 30 # Default
+        if period.endswith('d'):
+            try:
+                days = int(period[:-1])
+            except ValueError:
+                pass # Use default
+        start_date = end_date - timedelta(days=days)
+        return await FinancialService.get_period_summary(tenant_id, start_date, end_date, session)
+
+@v1_router.get("/financial/transactions", tags=["Finance"])
+async def financial_transactions(period: str = Query("30d")):
+    async with get_session() as session:
+        from db.orm_models import StockMovementORM
+        from db.base_repository import BaseRepository
+        repo = BaseRepository(StockMovementORM, session)
+        return await repo.get_all(limit=20)
+
+# Agent
 from pydantic import BaseModel
+class ChatMessage(BaseModel):
+    message: str
+
+@v1_router.post("/agent/chat", tags=["Agent"])
+async def chat_with_agent(chat_input: ChatMessage):
+    from llm.agent import AgentOrchestrator
+    reply = await AgentOrchestrator.process_message(
+        tenant_id=get_tenant_id(),
+        message=chat_input.message,
+    )
+    return {"reply": reply}
+
+# Mount v1 router
+app.include_router(v1_router)
+
+
+# ---------------------------------------------------------------------------
+# Auth routes
+# ---------------------------------------------------------------------------
 
 class LoginRequest(BaseModel):
     tenant_id: UUID
@@ -117,8 +233,8 @@ async def register_user(data: UserCreateSchema):
         return await UserService.register(data, session)
 
 
-@app.post("/auth/login", tags=["Auth"])
-async def login(request: LoginRequest):
+@app.post("/api/v1/auth/login", tags=["Auth"])
+async def login_v1(request: LoginRequest):
     async with get_session() as session:
         return await UserService.authenticate(
             tenant_id=request.tenant_id,
@@ -129,50 +245,49 @@ async def login(request: LoginRequest):
 
 
 # ---------------------------------------------------------------------------
-# Products
+# Products (OLD - these routes are now handled by v1_router)
+# ---------------------------------------------------------------------------
+# @app.get("/products", response_model=List[ProductSchema], tags=["Products"], dependencies=[_auth])
+# async def list_products(
+#     limit: int = Query(50, ge=1, le=200),
+#     offset: int = Query(0, ge=0),
+# ):
+#     async with get_session() as session:
+#         from db.orm_models import ProductORM
+#         from db.base_repository import BaseRepository
+#         repo = BaseRepository(ProductORM, session)
+#         return await repo.get_all(limit=limit, offset=offset)
+
+
+# @app.post("/products", response_model=ProductSchema, tags=["Products"], status_code=201, dependencies=[_auth])
+# async def create_product(product: ProductSchema):
+#     async with get_session() as session:
+#         from db.orm_models import ProductORM
+#         from db.base_repository import BaseRepository
+#         repo = BaseRepository(ProductORM, session)
+#         return await repo.create(product)
+
+
+# @app.get("/products/{product_id}", response_model=ProductSchema, tags=["Products"], dependencies=[_auth])
+# async def get_product(product_id: UUID):
+#     async with get_session() as session:
+#         from db.orm_models import ProductORM
+#         from db.base_repository import BaseRepository
+#         repo = BaseRepository(ProductORM, session)
+#         product = await repo.get_by_id(product_id)
+#         if not product:
+#             raise HTTPException(status_code=404, detail="Product not found")
+#         return product
+
+
+# ---------------------------------------------------------------------------
+# Stock Movements (OLD - these routes are now handled by v1_router)
 # ---------------------------------------------------------------------------
 
-@app.get("/products", response_model=List[ProductSchema], tags=["Products"], dependencies=[_auth])
-async def list_products(
-    limit: int = Query(50, ge=1, le=200),
-    offset: int = Query(0, ge=0),
-):
-    async with get_session() as session:
-        from db.orm_models import ProductORM
-        from db.base_repository import BaseRepository
-        repo = BaseRepository(ProductORM, session)
-        return await repo.get_all(limit=limit, offset=offset)
-
-
-@app.post("/products", response_model=ProductSchema, tags=["Products"], status_code=201, dependencies=[_auth])
-async def create_product(product: ProductSchema):
-    async with get_session() as session:
-        from db.orm_models import ProductORM
-        from db.base_repository import BaseRepository
-        repo = BaseRepository(ProductORM, session)
-        return await repo.create(product)
-
-
-@app.get("/products/{product_id}", response_model=ProductSchema, tags=["Products"], dependencies=[_auth])
-async def get_product(product_id: UUID):
-    async with get_session() as session:
-        from db.orm_models import ProductORM
-        from db.base_repository import BaseRepository
-        repo = BaseRepository(ProductORM, session)
-        product = await repo.get_by_id(product_id)
-        if not product:
-            raise HTTPException(status_code=404, detail="Product not found")
-        return product
-
-
-# ---------------------------------------------------------------------------
-# Stock Movements
-# ---------------------------------------------------------------------------
-
-@app.post("/movements", response_model=StockBalanceSchema, tags=["Stock"], status_code=201, dependencies=[_auth])
-async def create_movement(movement: MovementSchema):
-    async with get_session() as session:
-        return await StockService.process_movement(movement, session)
+# @app.post("/movements", response_model=StockBalanceSchema, tags=["Stock"], status_code=201, dependencies=[_auth])
+# async def create_movement(movement: MovementSchema):
+#     async with get_session() as session:
+#         return await StockService.process_movement(movement, session)
 
 
 @app.get("/movements", response_model=List[MovementSchema], tags=["Stock"], dependencies=[_auth])
@@ -200,25 +315,25 @@ async def list_balances(
 
 
 # ---------------------------------------------------------------------------
-# Financial
+# Financial (OLD - some routes are now handled by v1_router)
 # ---------------------------------------------------------------------------
 
-@app.post("/finance/expenses", response_model=ExpenseSchema, tags=["Finance"], status_code=201, dependencies=[_auth])
+@app.post("/finance/expenses", response_model=ExpenseSchema, tags=["Finance"], dependencies=[_auth])
 async def create_expense(expense: ExpenseSchema):
     async with get_session() as session:
         return await FinancialService.create_expense(expense, session)
 
 
-@app.get("/finance/summary", response_model=FinancialSummarySchema, tags=["Finance"], dependencies=[_auth])
-async def financial_summary(
-    period_start: date = Query(..., description="Format: YYYY-MM-DD"),
-    period_end: date = Query(..., description="Format: YYYY-MM-DD"),
-):
-    tenant_id = get_tenant_id()
-    if not tenant_id:
-        raise HTTPException(status_code=403, detail="Tenant context missing")
-    async with get_session() as session:
-        return await FinancialService.get_period_summary(tenant_id, period_start, period_end, session)
+# @app.get("/finance/summary", response_model=FinancialSummarySchema, tags=["Finance"], dependencies=[_auth])
+# async def financial_summary(
+#     period_start: date = Query(..., description="Format: YYYY-MM-DD"),
+#     period_end: date = Query(..., description="Format: YYYY-MM-DD"),
+# ):
+#     tenant_id = get_tenant_id()
+#     if not tenant_id:
+#         raise HTTPException(status_code=403, detail="Tenant context missing")
+#     async with get_session() as session:
+#         return await FinancialService.get_period_summary(tenant_id, period_start, period_end, session)
 
 
 @app.post("/finance/upload", tags=["Finance"], dependencies=[_auth])
@@ -272,21 +387,21 @@ async def get_demand_forecast(days: int = Query(30, ge=1, le=365)):
 
 
 # ---------------------------------------------------------------------------
-# LLM Agent
+# LLM Agent (OLD - this route is now handled by v1_router)
 # ---------------------------------------------------------------------------
 
-class ChatMessage(BaseModel):
-    message: str
+# class ChatMessage(BaseModel):
+#     message: str
 
 
-@app.post("/chat", tags=["Agent"], dependencies=[_auth])
-async def chat_with_agent(chat_input: ChatMessage):
-    from llm.agent import AgentOrchestrator
-    reply = await AgentOrchestrator.process_message(
-        tenant_id=get_tenant_id(),
-        message=chat_input.message,
-    )
-    return {"reply": reply}
+# @app.post("/chat", tags=["Agent"], dependencies=[_auth])
+# async def chat_with_agent(chat_input: ChatMessage):
+#     from llm.agent import AgentOrchestrator
+#     reply = await AgentOrchestrator.process_message(
+#         tenant_id=get_tenant_id(),
+#         message=chat_input.message,
+#     )
+#     return {"reply": reply}
 
 
 # ---------------------------------------------------------------------------

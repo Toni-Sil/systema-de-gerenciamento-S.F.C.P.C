@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 import 'package:frontend/core/providers/operational_provider.dart';
 import 'package:frontend/core/services/api_service.dart';
 import 'package:frontend/presentation/theme/app_theme.dart';
+import 'package:frontend/presentation/widgets/shimmer_loading.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -89,7 +90,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
         await _loadForecast();
       },
       child: ListView(
-        padding: const EdgeInsets.all(16),
+        padding: EdgeInsets.fromLTRB(
+            16, 16, 16, MediaQuery.of(context).padding.bottom + 80),
         children: [
           // ─ Header
           Row(
@@ -318,8 +320,18 @@ class _DashboardScreenState extends State<DashboardScreen> {
           ),
 
           // ─ Forecast do item crítico
-          if (!_loadingForecast && _forecast.isNotEmpty) ...
-            [
+          if (_loadingForecast) ...[
+            const SizedBox(height: 24),
+            const Text(
+              'Forecast IA — Item Crítico',
+              style: TextStyle(
+                  fontSize: 17,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.textHigh),
+            ),
+            const SizedBox(height: 12),
+            const ShimmerLoading(height: 120, borderRadius: 16),
+          ] else if (_forecast.isNotEmpty) ...[
               const SizedBox(height: 24),
               const Text(
                 'Forecast IA — Item Crítico',

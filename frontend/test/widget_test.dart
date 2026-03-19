@@ -23,7 +23,10 @@ void main() {
           ChangeNotifierProvider(create: (_) => UserProvider()),
           ChangeNotifierProvider(create: (_) => OperationalProvider()),
         ],
-        child: const SFCpcApp(),
+        child: const SFCpcApp(
+          showOnboarding: true,
+          isAuthenticated: false,
+        ),
       ),
     );
 

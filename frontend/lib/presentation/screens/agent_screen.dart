@@ -175,9 +175,8 @@ class _AgentScreenState extends State<AgentScreen> {
               Theme.of(ctx).colorScheme.surface.withValues(alpha: 0.97),
           borderRadius:
               const BorderRadius.vertical(top: Radius.circular(28)),
-          border: Border(
-              top: BorderSide(
-                  color: Colors.white.withValues(alpha: 0.1))),
+          border: Border.all(
+              color: Colors.white.withValues(alpha: 0.1)),
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -513,60 +512,63 @@ class _AgentScreenState extends State<AgentScreen> {
               ],
             ),
           ),
-        Container(
-          padding: const EdgeInsets.fromLTRB(8, 8, 8, 12),
-          decoration: BoxDecoration(
-            color: Theme.of(context).colorScheme.surface,
-            border: Border(
-                top: BorderSide(
-                    color: Colors.white.withValues(alpha: 0.08))),
-          ),
-          child: Row(
-            children: [
-              IconButton(
-                icon:
-                    const Icon(Icons.add_circle_outline, size: 26),
-                color: AppColors.neonCyan,
-                onPressed: _showAttachmentMenu,
-                tooltip: 'Anexar',
-              ),
-              Expanded(
-                child: TextField(
-                  controller: _controller,
-                  focusNode: _focusNode,
-                  textInputAction: TextInputAction.send,
-                  onSubmitted: _sendMessage,
-                  decoration: const InputDecoration(
-                    hintText: 'Perguntar ao Agente…',
-                    border: InputBorder.none,
-                    contentPadding: EdgeInsets.symmetric(
-                        horizontal: 12, vertical: 10),
+        SafeArea(
+          top: false,
+          child: Container(
+            padding: const EdgeInsets.fromLTRB(8, 8, 8, 8),
+            decoration: BoxDecoration(
+              color: Theme.of(context).colorScheme.surface,
+              border: Border(
+                  top: BorderSide(
+                      color: Colors.white.withValues(alpha: 0.08))),
+            ),
+            child: Row(
+              children: [
+                IconButton(
+                  icon:
+                      const Icon(Icons.add_circle_outline, size: 26),
+                  color: AppColors.neonCyan,
+                  onPressed: _showAttachmentMenu,
+                  tooltip: 'Anexar',
+                ),
+                Expanded(
+                  child: TextField(
+                    controller: _controller,
+                    focusNode: _focusNode,
+                    textInputAction: TextInputAction.send,
+                    onSubmitted: _sendMessage,
+                    decoration: const InputDecoration(
+                      hintText: 'Perguntar ao Agente…',
+                      border: InputBorder.none,
+                      contentPadding: EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 10),
+                    ),
                   ),
                 ),
-              ),
-              AnimatedSwitcher(
-                duration: const Duration(milliseconds: 200),
-                child: _isSending
-                    ? const SizedBox(
-                        key: ValueKey('loading'),
-                        width: 24,
-                        height: 24,
-                        child: Padding(
-                          padding: EdgeInsets.all(4),
-                          child: CircularProgressIndicator(
-                              strokeWidth: 2,
+                AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 200),
+                  child: _isSending
+                      ? const SizedBox(
+                          key: ValueKey('loading'),
+                          width: 24,
+                          height: 24,
+                          child: Padding(
+                            padding: EdgeInsets.all(4),
+                            child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: AppColors.neonCyan),
+                          ),
+                        )
+                      : IconButton(
+                          key: const ValueKey('send'),
+                          icon: const Icon(Icons.send,
                               color: AppColors.neonCyan),
+                          onPressed: () =>
+                              _sendMessage(_controller.text),
                         ),
-                      )
-                    : IconButton(
-                        key: const ValueKey('send'),
-                        icon: const Icon(Icons.send,
-                            color: AppColors.neonCyan),
-                        onPressed: () =>
-                            _sendMessage(_controller.text),
-                      ),
-              ),
-            ],
+                ),
+              ],
+            ),
           ),
         ),
       ],
@@ -617,7 +619,9 @@ class _AgentScreenState extends State<AgentScreen> {
           children: [
             Text(msg.text,
                 style: TextStyle(
-                  color: isUser ? Colors.white : Colors.white70,
+                  color: isUser
+                      ? Colors.white
+                      : Theme.of(context).colorScheme.onSurface,
                   fontSize: 14,
                   height: 1.45,
                 )),
@@ -627,7 +631,11 @@ class _AgentScreenState extends State<AgentScreen> {
                   fontSize: 10,
                   color: isUser
                       ? Colors.white.withValues(alpha: 0.5)
-                      : AppColors.textLow,
+                      : Theme.of(context)
+                          .textTheme
+                          .bodySmall
+                          ?.color
+                          ?.withValues(alpha: 0.6),
                 )),
           ],
         ),

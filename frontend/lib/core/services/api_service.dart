@@ -85,26 +85,42 @@ class ApiService {
 
   Map<String, dynamic> _parse(http.Response res) {
     if (res.statusCode >= 200 && res.statusCode < 300) {
-      return jsonDecode(res.body) as Map<String, dynamic>;
+      try {
+        return jsonDecode(res.body) as Map<String, dynamic>;
+      } catch (e) {
+        return {}; // fallback for success with empty/non-json body
+      }
     }
     // SEC #5: 401/403 lançam AuthException para UI distinguir
     if (res.statusCode == 401 || res.statusCode == 403) {
       throw const AuthException('Credenciais inválidas ou sessão expirada.');
     }
-    throw ApiException(res.statusCode,
-        (jsonDecode(res.body) as Map?)?['detail']?.toString() ?? res.body);
+    try {
+      final decoded = jsonDecode(res.body) as Map?;
+      throw ApiException(res.statusCode, decoded?['detail']?.toString() ?? 'Erro desconhecido');
+    } catch (_) {
+      throw ApiException(res.statusCode, 'Erro no servidor: ${res.statusCode}');
+    }
   }
 
   List<dynamic> _parseList(http.Response res) {
     if (res.statusCode >= 200 && res.statusCode < 300) {
-      final body = jsonDecode(res.body);
-      return body is List ? body : (body['items'] as List? ?? []);
+      try {
+        final body = jsonDecode(res.body);
+        return body is List ? body : (body['items'] as List? ?? []);
+      } catch (e) {
+        return [];
+      }
     }
     if (res.statusCode == 401 || res.statusCode == 403) {
       throw const AuthException('Sessão expirada. Faça login novamente.');
     }
-    throw ApiException(res.statusCode,
-        (jsonDecode(res.body) as Map?)?['detail']?.toString() ?? res.body);
+    try {
+      final decoded = jsonDecode(res.body) as Map?;
+      throw ApiException(res.statusCode, decoded?['detail']?.toString() ?? 'Erro desconhecido');
+    } catch (_) {
+      throw ApiException(res.statusCode, 'Erro no servidor: ${res.statusCode}');
+    }
   }
 
   // ─── INVENTORY ───────────────────────────────────────────────────────────

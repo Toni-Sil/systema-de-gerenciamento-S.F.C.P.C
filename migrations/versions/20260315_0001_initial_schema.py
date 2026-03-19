@@ -61,7 +61,7 @@ def upgrade() -> None:
         sa.Column("unit", sa.String(20), nullable=False),
         sa.Column("min_stock", sa.Float, nullable=False, server_default="0"),
         sa.Column("category", sa.String(30), nullable=True),
-        sa.Column("attributes", postgresql.JSONB, nullable=True),
+        sa.Column("attributes", sa.JSON, nullable=True),
         sa.Column("is_active", sa.Boolean, nullable=False, server_default="true"),
         sa.Column("created_at", sa.DateTime, nullable=False, server_default=sa.func.now()),
         sa.UniqueConstraint("tenant_id", "code", name="uq_product_tenant_code"),

@@ -93,11 +93,13 @@ class SFCpcApp extends StatelessWidget {
       theme: AppTheme.lightTheme,
       darkTheme: AppTheme.darkTheme,
       themeMode: themeProvider.mode,
-      home: showOnboarding
-          ? OnboardingScreen(
-              onFinished: () =>
-                  Navigator.pushReplacementNamed(context, '/home'))
-          : const HomeScreen(),
+      home: Builder(
+        builder: (context) => showOnboarding
+            ? OnboardingScreen(
+                onFinished: () =>
+                    Navigator.pushReplacementNamed(context, '/home'))
+            : const HomeScreen(),
+      ),
       routes: {
         '/home': (_) => const HomeScreen(),
       },

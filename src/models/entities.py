@@ -201,3 +201,7 @@ class FinancialSummarySchema(BaseSchema):
     total_entries_value: float
     total_exits_value: float
     gross_margin: float  # = total_exits_value - total_expenses
+
+
+class ChatInputSchema(BaseSchema):
+    message: str = Field(..., min_length=1)

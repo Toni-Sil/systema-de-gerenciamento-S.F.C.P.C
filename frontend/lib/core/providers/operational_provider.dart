@@ -85,44 +85,6 @@ class OperationalProvider with ChangeNotifier {
     notifyListeners();
   }
 
-  void _loadMockData() {
-    _items = [
-      const InventoryItem(
-        code: 'LINHO-BEGE',
-        category: 'Tecidos',
-        description: 'Linho Importado Bege',
-        qty: 120,
-        unit: 'Metros',
-        cost: 28.50,
-        location: 'Corredor A, Prat 3',
-        minimumStock: 20,
-        supplier: 'Textil SP',
-      ),
-      const InventoryItem(
-        code: 'ESPUMA-D28',
-        category: 'Espumas',
-        description: 'Espuma Flexível D28',
-        qty: 3,
-        unit: 'Unid.',
-        cost: 145.00,
-        location: 'Corredor C, Chão',
-        minimumStock: 5,
-        supplier: 'Espumados Brasil',
-      ),
-      const InventoryItem(
-        code: 'ARTIC-METAL',
-        category: 'Ferragens',
-        description: 'Articulador de Sofá-cama Premium',
-        qty: 58,
-        unit: 'Kits',
-        cost: 89.90,
-        location: 'Corredor B, Prat 1',
-        minimumStock: 10,
-        supplier: 'MetalParts BR',
-      ),
-    ];
-  }
-
   Future<void> loadFromApi() async {
     _status = ProviderStatus.loading;
     _errorMessage = null;
@@ -137,8 +99,9 @@ class OperationalProvider with ChangeNotifier {
           .toList();
       _status = ProviderStatus.idle;
     } catch (_) {
-      _loadMockData();
-      _status = ProviderStatus.idle;
+      // Retain existing items instead of loading mock data
+      _errorMessage = 'Falha ao sincronizar. Usando cache local.';
+      _status = ProviderStatus.error;
     }
     notifyListeners();
   }

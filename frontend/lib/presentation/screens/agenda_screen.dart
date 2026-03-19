@@ -300,7 +300,8 @@ class _AgendaScreenState extends State<AgendaScreen>
       );
     }
     return ListView.builder(
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 100),
+      padding: EdgeInsets.fromLTRB(
+          16, 8, 16, MediaQuery.of(context).padding.bottom + 80),
       itemCount: events.length,
       itemBuilder: (_, i) => _buildEventCard(events[i], agenda),
     );

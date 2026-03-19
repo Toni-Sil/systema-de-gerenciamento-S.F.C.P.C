@@ -11,9 +11,9 @@ from uuid import uuid4
 
 from sqlalchemy import (
     Boolean, Column, Date, DateTime, Enum as SAEnum,
-    Float, ForeignKey, Index, String, Text, UniqueConstraint
+    Float, ForeignKey, Index, String, Text, UniqueConstraint, JSON
 )
-from sqlalchemy.dialects.postgresql import JSONB, UUID
+from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 
 from db.session import Base
@@ -83,7 +83,7 @@ class ProductORM(Base):
     unit = Column(String(20), nullable=False)
     min_stock = Column(Float, default=0.0, nullable=False)
     category = Column(SAEnum(ProductCategory), nullable=True)
-    attributes = Column(JSONB, nullable=True)  # Flexible: FabricAttributes, FoamAttributes, etc.
+    attributes = Column(JSON, nullable=True)  # Flexible: FabricAttributes, FoamAttributes, etc.
     is_active = Column(Boolean, default=True, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 

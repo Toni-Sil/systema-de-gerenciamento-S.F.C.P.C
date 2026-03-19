@@ -76,6 +76,37 @@ class BaseRepository(Generic[T]):
         await self.session.flush()
         return merged
 
+    async def get_one(self, **kwargs) -> Optional[T]:
+        """Fetches a single entity matching the criteria, scoped to tenant."""
+        tenant_id = self._require_tenant()
+        stmt = select(self.model).where(self.model.tenant_id == tenant_id)
+        for key, value in kwargs.items():
+            stmt = stmt.where(getattr(self.model, key) == value)
+        result = await self.session.execute(stmt)
+        return result.scalar_one_or_none()
+
+    async def delete_where(self, **kwargs) -> bool:
+        """Deletes entities matching criteria within tenant. Returns True if any deleted."""
+        tenant_id = self._require_tenant()
+        # For safety/simplicity in MVP, we fetch then delete. 
+        # Real-world: use delete() statement for performance.
+        entities = await self.get_all_where(**kwargs)
+        if not entities:
+            return False
+        for e in entities:
+            await self.session.delete(e)
+        await self.session.flush()
+        return True
+
+    async def get_all_where(self, **kwargs) -> List[T]:
+        """Returns all entities matching criteria for the current tenant."""
+        tenant_id = self._require_tenant()
+        stmt = select(self.model).where(self.model.tenant_id == tenant_id)
+        for key, value in kwargs.items():
+            stmt = stmt.where(getattr(self.model, key) == value)
+        result = await self.session.execute(stmt)
+        return list(result.scalars().all())
+
     async def delete(self, entity_id: UUID) -> bool:
         """Soft-deletes by ID within the current tenant. Returns True if found."""
         entity = await self.get_by_id(entity_id)

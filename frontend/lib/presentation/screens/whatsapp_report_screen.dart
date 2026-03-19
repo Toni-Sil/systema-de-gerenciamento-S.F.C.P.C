@@ -208,7 +208,7 @@ class _WhatsAppReportScreenState extends State<WhatsAppReportScreen> {
                       height: 18,
                       child: CircularProgressIndicator(
                           strokeWidth: 2, color: Colors.white))
-                  : const Icon(Icons.whatsapp),
+                  : const Icon(Icons.send),
               label: Text(
                 _sending ? 'Enviando...' : 'Enviar para Gestor',
                 style: const TextStyle(

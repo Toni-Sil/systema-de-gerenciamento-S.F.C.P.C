@@ -6,6 +6,8 @@ import 'package:frontend/core/models/inventory_item.dart';
 import 'package:frontend/core/providers/operational_provider.dart';
 import 'package:frontend/presentation/theme/app_theme.dart';
 import 'package:frontend/presentation/screens/barcode_scanner_screen.dart';
+import 'package:frontend/presentation/widgets/empty_state_widget.dart';
+import 'package:frontend/presentation/widgets/shimmer_loading.dart';
 
 class OperationalScreen extends StatefulWidget {
   const OperationalScreen({super.key});
@@ -258,159 +260,206 @@ class _OperationalScreenState extends State<OperationalScreen> {
         builder: (ctx, setSheet) => Padding(
           padding: EdgeInsets.fromLTRB(
               16, 16, 16, MediaQuery.of(ctx).viewInsets.bottom + 24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Center(
-                child: Container(
-                    width: 40,
-                    height: 4,
-                    decoration: BoxDecoration(
-                        color: AppColors.border,
-                        borderRadius: BorderRadius.circular(2))),
-              ),
-              const SizedBox(height: 16),
-              Text('Movimentação — ${item.description}',
-                  style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                      color: AppColors.textHigh)),
-              const SizedBox(height: 4),
-              Text('Saldo atual: ${item.balanceLabel}',
-                  style: const TextStyle(
-                      color: AppColors.textLow, fontSize: 13)),
-              const SizedBox(height: 16),
-              // Toggle Entrada / Saída
-              Row(
-                children: [
-                  Expanded(
-                    child: GestureDetector(
-                      onTap: () => setSheet(() => isEntry = true),
-                      child: Container(
-                        padding:
-                            const EdgeInsets.symmetric(vertical: 12),
-                        decoration: BoxDecoration(
-                          color: isEntry
-                              ? AppColors.neonGreen.withValues(alpha: 0.15)
-                              : Colors.transparent,
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(
-                              color: isEntry
-                                  ? AppColors.neonGreen
-                                  : AppColors.border),
-                        ),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(Icons.add,
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Center(
+                  child: Container(
+                      width: 40,
+                      height: 4,
+                      decoration: BoxDecoration(
+                          color: AppColors.border,
+                          borderRadius: BorderRadius.circular(2))),
+                ),
+                const SizedBox(height: 16),
+                Text('Movimentação — ${item.description}',
+                    style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        color: AppColors.textHigh)),
+                const SizedBox(height: 4),
+                Text('Saldo atual: ${item.balanceLabel}',
+                    style: const TextStyle(
+                        color: AppColors.textLow, fontSize: 13)),
+                const SizedBox(height: 16),
+                // Toggle Entrada / Saída
+                Row(
+                  children: [
+                    Expanded(
+                      child: GestureDetector(
+                        onTap: () => setSheet(() => isEntry = true),
+                        child: Container(
+                          padding:
+                              const EdgeInsets.symmetric(vertical: 12),
+                          decoration: BoxDecoration(
+                            color: isEntry
+                                ? AppColors.neonGreen.withValues(alpha: 0.15)
+                                : Colors.transparent,
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
                                 color: isEntry
                                     ? AppColors.neonGreen
-                                    : AppColors.textLow,
-                                size: 18),
-                            const SizedBox(width: 6),
-                            Text('Entrada',
-                                style: TextStyle(
-                                    color: isEntry
-                                        ? AppColors.neonGreen
-                                        : AppColors.textLow,
-                                    fontWeight: FontWeight.bold)),
-                          ],
+                                    : AppColors.border),
+                          ),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(Icons.add,
+                                  color: isEntry
+                                      ? AppColors.neonGreen
+                                      : AppColors.textLow,
+                                  size: 18),
+                              const SizedBox(width: 6),
+                              Text('Entrada',
+                                  style: TextStyle(
+                                      color: isEntry
+                                          ? AppColors.neonGreen
+                                          : AppColors.textLow,
+                                      fontWeight: FontWeight.bold)),
+                            ],
+                          ),
                         ),
                       ),
                     ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: GestureDetector(
-                      onTap: () => setSheet(() => isEntry = false),
-                      child: Container(
-                        padding:
-                            const EdgeInsets.symmetric(vertical: 12),
-                        decoration: BoxDecoration(
-                          color: !isEntry
-                              ? AppColors.neonRed.withValues(alpha: 0.15)
-                              : Colors.transparent,
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(
-                              color: !isEntry
-                                  ? AppColors.neonRed
-                                  : AppColors.border),
-                        ),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(Icons.remove,
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: GestureDetector(
+                        onTap: () => setSheet(() => isEntry = false),
+                        child: Container(
+                          padding:
+                              const EdgeInsets.symmetric(vertical: 12),
+                          decoration: BoxDecoration(
+                            color: !isEntry
+                                ? AppColors.neonRed.withValues(alpha: 0.15)
+                                : Colors.transparent,
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
                                 color: !isEntry
                                     ? AppColors.neonRed
-                                    : AppColors.textLow,
-                                size: 18),
-                            const SizedBox(width: 6),
-                            Text('Saída',
-                                style: TextStyle(
-                                    color: !isEntry
-                                        ? AppColors.neonRed
-                                        : AppColors.textLow,
-                                    fontWeight: FontWeight.bold)),
-                          ],
+                                    : AppColors.border),
+                          ),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(Icons.remove,
+                                  color: !isEntry
+                                      ? AppColors.neonRed
+                                      : AppColors.textLow,
+                                  size: 18),
+                              const SizedBox(width: 6),
+                              Text('Saída',
+                                  style: TextStyle(
+                                      color: !isEntry
+                                          ? AppColors.neonRed
+                                          : AppColors.textLow,
+                                      fontWeight: FontWeight.bold)),
+                            ],
+                          ),
                         ),
                       ),
                     ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 14),
-              TextField(
-                controller: qtyCtrl,
-                keyboardType: TextInputType.number,
-                decoration: InputDecoration(
-                    labelText: 'Quantidade (${item.unit})',
-                    prefixIcon: Icon(
-                        isEntry ? Icons.add_circle : Icons.remove_circle,
-                        color: isEntry
-                            ? AppColors.neonGreen
-                            : AppColors.neonRed)),
-              ),
-              const SizedBox(height: 10),
-              TextField(
-                controller: reasonCtrl,
-                decoration: const InputDecoration(
-                    labelText: 'Motivo (ex: Produção, Devolução)'),
-              ),
-              const SizedBox(height: 20),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor:
-                        isEntry ? AppColors.neonGreen : AppColors.neonRed,
-                    foregroundColor: AppColors.bgDeep,
-                  ),
-                  onPressed: () {
-                    final qty = double.tryParse(qtyCtrl.text);
-                    if (qty == null || qty <= 0) return;
-                    final delta = isEntry ? qty : -qty;
-                    op.updateBalance(item.code, delta,
-                        reasonCtrl.text.isEmpty ? (isEntry ? 'Entrada' : 'Saída') : reasonCtrl.text);
-                    HapticFeedback.lightImpact();
-                    Navigator.pop(ctx);
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text(
-                            '${isEntry ? '+' : '-'}${qty.toInt()} ${item.unit} em ${item.description}'),
-                        backgroundColor: isEntry
-                            ? AppColors.neonGreen
-                            : AppColors.neonRed,
-                      ),
-                    );
-                  },
-                  child: Text(
-                      isEntry ? 'Confirmar Entrada' : 'Confirmar Saída',
-                      style:
-                          const TextStyle(fontWeight: FontWeight.bold)),
+                  ],
                 ),
-              ),
-            ],
+                const SizedBox(height: 14),
+                TextField(
+                  controller: qtyCtrl,
+                  keyboardType: TextInputType.number,
+                  decoration: InputDecoration(
+                      labelText: 'Quantidade (${item.unit})',
+                      prefixIcon: Icon(
+                          isEntry ? Icons.add_circle : Icons.remove_circle,
+                          color: isEntry
+                              ? AppColors.neonGreen
+                              : AppColors.neonRed)),
+                ),
+                const SizedBox(height: 10),
+                TextField(
+                  controller: reasonCtrl,
+                  decoration: const InputDecoration(
+                      labelText: 'Motivo (ex: Produção, Devolução)'),
+                ),
+                const SizedBox(height: 20),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor:
+                          isEntry ? AppColors.neonGreen : AppColors.neonRed,
+                      foregroundColor: AppColors.bgDeep,
+                    ),
+                    onPressed: () {
+                      final qty = double.tryParse(qtyCtrl.text);
+                      if (qty == null || qty <= 0) return;
+                      final delta = isEntry ? qty : -qty;
+                      op.updateBalance(item.code, delta,
+                          reasonCtrl.text.isEmpty ? (isEntry ? 'Entrada' : 'Saída') : reasonCtrl.text);
+                      HapticFeedback.lightImpact();
+                      Navigator.pop(ctx);
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text(
+                              '${isEntry ? '+' : '-'}${qty.toInt()} ${item.unit} em ${item.description}'),
+                          backgroundColor:
+                              isEntry ? AppColors.neonGreen : AppColors.neonRed,
+                        ),
+                      );
+                    },
+                    child: const Text('Confirmar Movimentação',
+                        style: TextStyle(fontWeight: FontWeight.bold)),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                // NOVO: Botão de Excluir Produto (Manual)
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: AppColors.neonRed,
+                      side: const BorderSide(color: AppColors.neonRed, width: 1.2),
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                    ),
+                    icon: const Icon(Icons.delete_outline, size: 18),
+                    label: const Text('Excluir Produto do Estoque',
+                        style: TextStyle(fontWeight: FontWeight.bold)),
+                    onPressed: () async {
+                      Navigator.pop(ctx); // fecha o sheet de movimento
+                      final confirm = await showDialog<bool>(
+                        context: context,
+                        builder: (c) => AlertDialog(
+                          title: const Text('Confirmar Exclusão'),
+                          content:
+                              Text('Remover "${item.description}" permanentemente?'),
+                          actions: [
+                            TextButton(
+                                onPressed: () => Navigator.pop(c, false),
+                                child: const Text('Cancelar')),
+                            ElevatedButton(
+                              style: ElevatedButton.styleFrom(
+                                  backgroundColor: AppColors.neonRed),
+                              onPressed: () => Navigator.pop(c, true),
+                              child: const Text('Excluir'),
+                            ),
+                          ],
+                        ),
+                      );
+                      if (confirm == true) {
+                        op.removeItem(item.code);
+                        if (context.mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text('${item.description} excluído.'),
+                              backgroundColor: AppColors.neonRed,
+                            ),
+                          );
+                        }
+                      }
+                    },
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -574,10 +623,13 @@ class _OperationalScreenState extends State<OperationalScreen> {
             ),
 
           // ─ Loading
-          if (op.isLoading)
-            const Expanded(
-              child: Center(
-                child: CircularProgressIndicator(color: AppColors.neonCyan),
+          if (op.isLoading && op.items.isEmpty)
+            Expanded(
+              child: ListView.separated(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                itemCount: 5,
+                separatorBuilder: (_, __) => const SizedBox(height: 12),
+                itemBuilder: (_, __) => const ShimmerLoading(height: 100),
               ),
             )
           else
@@ -587,11 +639,22 @@ class _OperationalScreenState extends State<OperationalScreen> {
             child: RefreshIndicator(
               color: AppColors.neonCyan,
               onRefresh: () => op.loadFromApi(),
-              child: op.items.isEmpty
-                  ? _emptyState()
-                  : ListView.builder(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 16, vertical: 4),
+child: op.status == ProviderStatus.error
+                  ? EmptyStateWidget(
+                      icon: Icons.cloud_off,
+                      title: 'Erro de Conexão',
+                      message: op.errorMessage ?? 'Não foi possível carregar o estoque.',
+                      onRefresh: () => op.loadFromApi(),
+                    )
+                  : op.items.isEmpty
+                      ? const EmptyStateWidget(
+                          icon: Icons.inventory_2_outlined,
+                          title: 'Estoque Vazio',
+                          message: 'Adicione itens ou ajuste os filtros para ver os resultados.',
+                        )
+                      : ListView.builder(
+                      padding: EdgeInsets.fromLTRB(
+                          16, 4, 16, MediaQuery.of(context).padding.bottom + 80),
                       itemCount: op.items.length,
                       itemBuilder: (ctx, i) =>
                           _itemCard(ctx, op.items[i], op),
@@ -628,26 +691,7 @@ class _OperationalScreenState extends State<OperationalScreen> {
     );
   }
 
-  Widget _emptyState() {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(Icons.inventory_2_outlined,
-              size: 64,
-              color: AppColors.textLow.withValues(alpha: 0.4)),
-          const SizedBox(height: 16),
-          const Text('Nenhum item encontrado',
-              style:
-                  TextStyle(color: AppColors.textLow, fontSize: 15)),
-          const SizedBox(height: 8),
-          const Text('Ajuste a busca ou adicione um novo item',
-              style:
-                  TextStyle(color: AppColors.textLow, fontSize: 12)),
-        ],
-      ),
-    );
-  }
+  // _emptyState removido em favor do EmptyStateWidget
 
   Widget _itemCard(
       BuildContext ctx, InventoryItem item, OperationalProvider op) {
@@ -695,111 +739,111 @@ class _OperationalScreenState extends State<OperationalScreen> {
         onTap: () => _showMovementSheet(item),
         child: Container(
           margin: const EdgeInsets.only(bottom: 12),
+          clipBehavior: Clip.antiAlias,
           decoration: BoxDecoration(
             color: AppColors.bgCard,
             borderRadius: BorderRadius.circular(16),
-            border: Border(
-              left: BorderSide(color: statusColor, width: 4),
-              top: BorderSide(
-                  color: AppColors.border.withValues(alpha: 0.5)),
-              right: BorderSide(
-                  color: AppColors.border.withValues(alpha: 0.5)),
-              bottom: BorderSide(
-                  color: AppColors.border.withValues(alpha: 0.5)),
-            ),
+            border: Border.all(
+                color: AppColors.border.withValues(alpha: 0.5)),
           ),
-          child: Padding(
-            padding: const EdgeInsets.all(14),
+          child: IntrinsicHeight(
             child: Row(
               children: [
-                // Ícone categoria
-                Container(
-                  width: 46,
-                  height: 46,
-                  decoration: BoxDecoration(
-                    color: statusColor.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Icon(_iconForCategory(item.category),
-                      color: statusColor, size: 22),
-                ),
-                const SizedBox(width: 14),
-                // Info
+                Container(width: 4, color: statusColor),
                 Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(item.description,
-                          style: const TextStyle(
-                              fontWeight: FontWeight.bold,
-                              fontSize: 15,
-                              color: AppColors.textHigh)),
-                      const SizedBox(height: 3),
-                      Text(
-                          '${item.code} • ${item.category}',
-                          style: const TextStyle(
-                              color: AppColors.textLow,
-                              fontSize: 11)),
-                      const SizedBox(height: 5),
-                      Row(
-                        children: [
-                          const Icon(Icons.location_on,
-                              size: 12,
-                              color: AppColors.textLow),
-                          const SizedBox(width: 3),
-                          Text(item.location,
-                              style: const TextStyle(
-                                  fontSize: 11,
-                                  color: AppColors.textLow)),
-                          if (item.supplier != null) ...[
-                            const SizedBox(width: 8),
-                            const Icon(Icons.local_shipping,
-                                size: 12,
-                                color: AppColors.textLow),
-                            const SizedBox(width: 3),
-                            Text(item.supplier!,
-                                style: const TextStyle(
-                                    fontSize: 11,
-                                    color: AppColors.textLow)),
-                          ]
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-                // Saldo + badge
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    Text(item.balanceLabel,
-                        style: TextStyle(
-                            fontSize: 17,
-                            fontWeight: FontWeight.bold,
-                            color: statusColor)),
-                    const SizedBox(height: 4),
-                    if (item.cost > 0)
-                      Text(
-                          'R\$ ${item.totalValue.toStringAsFixed(0)}',
-                          style: const TextStyle(
-                              fontSize: 10,
-                              color: AppColors.textLow)),
-                    if (lowStock)
-                      Container(
-                        margin: const EdgeInsets.only(top: 5),
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 8, vertical: 3),
-                        decoration: BoxDecoration(
-                          color: AppColors.neonRed
-                              .withValues(alpha: 0.15),
-                          borderRadius: BorderRadius.circular(10),
+                  child: Padding(
+                    padding: const EdgeInsets.all(14),
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 46,
+                          height: 46,
+                          decoration: BoxDecoration(
+                            color: statusColor.withValues(alpha: 0.1),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Icon(_iconForCategory(item.category),
+                              color: statusColor, size: 22),
                         ),
-                        child: const Text('Repor',
-                            style: TextStyle(
-                                color: AppColors.neonRed,
-                                fontSize: 9,
-                                fontWeight: FontWeight.bold)),
-                      ),
-                  ],
+                        const SizedBox(width: 14),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(item.description,
+                                  style: const TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 15,
+                                      color: AppColors.textHigh)),
+                              const SizedBox(height: 3),
+                              Text(
+                                  '${item.code} • ${item.category}',
+                                  style: const TextStyle(
+                                      color: AppColors.textLow,
+                                      fontSize: 11)),
+                              const SizedBox(height: 5),
+                              Row(
+                                children: [
+                                  const Icon(Icons.location_on,
+                                      size: 12,
+                                      color: AppColors.textLow),
+                                  const SizedBox(width: 3),
+                                  Text(item.location,
+                                      style: const TextStyle(
+                                          fontSize: 11,
+                                          color: AppColors.textLow)),
+                                  if (item.supplier != null) ...[
+                                    const SizedBox(width: 8),
+                                    const Icon(Icons.local_shipping,
+                                        size: 12,
+                                        color: AppColors.textLow),
+                                    const SizedBox(width: 3),
+                                    Text(item.supplier!,
+                                        style: const TextStyle(
+                                            fontSize: 11,
+                                            color: AppColors.textLow)),
+                                  ]
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.end,
+                          children: [
+                            Text(item.balanceLabel,
+                                style: TextStyle(
+                                    fontSize: 17,
+                                    fontWeight: FontWeight.bold,
+                                    color: statusColor)),
+                            const SizedBox(height: 4),
+                            if (item.cost > 0)
+                              Text(
+                                  'R\$ ${item.totalValue.toStringAsFixed(0)}',
+                                  style: const TextStyle(
+                                      fontSize: 10,
+                                      color: AppColors.textLow)),
+                            if (lowStock)
+                              Container(
+                                margin: const EdgeInsets.only(top: 5),
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 8, vertical: 3),
+                                decoration: BoxDecoration(
+                                  color: AppColors.neonRed
+                                      .withValues(alpha: 0.15),
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                                child: const Text('Repor',
+                                    style: TextStyle(
+                                        color: AppColors.neonRed,
+                                        fontSize: 9,
+                                        fontWeight: FontWeight.bold)),
+                              ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
                 ),
               ],
             ),

@@ -109,8 +109,9 @@ class _FinancialScreenState extends State<FinancialScreen> {
               color: AppColors.neonCyan,
               onRefresh: _loadData,
               child: ListView(
-                // padding bottom 100 para nao ficar atras da GlassNavBar
-                padding: const EdgeInsets.fromLTRB(16, 12, 16, 100),
+                // padding bottom adaptativo para nao ficar atras da GlassNavBar
+                padding: EdgeInsets.fromLTRB(
+                    16, 12, 16, MediaQuery.of(context).padding.bottom + 80),
                 children: [
                   // ─ Card ROI
                   Container(
@@ -160,7 +161,7 @@ class _FinancialScreenState extends State<FinancialScreen> {
                                 ),
                                 child: const Row(
                                   children: [
-                                    Icon(Icons.whatsapp,
+                                    Icon(Icons.share,
                                         color: Color(0xFF25D366),
                                         size: 14),
                                     SizedBox(width: 5),

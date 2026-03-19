@@ -52,13 +52,13 @@ class _BarcodeScannerScreenState extends State<BarcodeScannerScreen> {
         iconTheme: const IconThemeData(color: AppColors.textHigh),
         actions: [
           IconButton(
-            icon: ValueListenableBuilder(
-              valueListenable: _ctrl.torchState,
+            icon: ValueListenableBuilder<MobileScannerState>(
+              valueListenable: _ctrl,
               builder: (_, state, __) => Icon(
-                state == TorchState.on
+                state.torchState == TorchState.on
                     ? Icons.flash_on
                     : Icons.flash_off,
-                color: state == TorchState.on
+                color: state.torchState == TorchState.on
                     ? AppColors.neonAmber
                     : AppColors.textLow,
               ),
