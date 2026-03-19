@@ -1,4 +1,4 @@
-// PR-C — OperationalScreen: busca real, filtro por categoria, scanner, validação
+// PR-C v2 — OperationalScreen: light/dark adaptativo
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -27,7 +27,6 @@ class _OperationalScreenState extends State<OperationalScreen> {
   @override
   void initState() {
     super.initState();
-    // Carrega da API ao abrir (com fallback mock offline)
     WidgetsBinding.instance.addPostFrameCallback((_) {
       Provider.of<OperationalProvider>(context, listen: false).loadFromApi();
     });
@@ -38,8 +37,6 @@ class _OperationalScreenState extends State<OperationalScreen> {
     _searchCtrl.dispose();
     super.dispose();
   }
-
-  // ─── Scanner ─────────────────────────────────────────────────────────────
 
   void _openScanner() {
     Navigator.of(context).push(
@@ -56,9 +53,11 @@ class _OperationalScreenState extends State<OperationalScreen> {
     );
   }
 
-  // ─── Dialog adicionar item ───────────────────────────────────────────────────
-
   void _showAddDialog() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final sheetBg = isDark ? AppColors.bgCard : Colors.white;
+    final textHigh = isDark ? AppColors.textHigh : const Color(0xFF1A1A1A);
+
     final nameCtrl = TextEditingController();
     final codeCtrl = TextEditingController();
     final locationCtrl = TextEditingController();
@@ -74,7 +73,7 @@ class _OperationalScreenState extends State<OperationalScreen> {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      backgroundColor: AppColors.bgCard,
+      backgroundColor: sheetBg,
       shape: const RoundedRectangleBorder(
           borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
       builder: (ctx) => StatefulBuilder(
@@ -93,18 +92,17 @@ class _OperationalScreenState extends State<OperationalScreen> {
                       width: 40,
                       height: 4,
                       decoration: BoxDecoration(
-                          color: AppColors.border,
+                          color: isDark ? AppColors.border : const Color(0xFFCCCCCC),
                           borderRadius: BorderRadius.circular(2)),
                     ),
                   ),
                   const SizedBox(height: 16),
-                  const Text('Novo Item',
+                  Text('Novo Item',
                       style: TextStyle(
                           fontSize: 18,
                           fontWeight: FontWeight.bold,
-                          color: AppColors.textHigh)),
+                          color: textHigh)),
                   const SizedBox(height: 16),
-                  // Nome
                   TextFormField(
                     controller: nameCtrl,
                     decoration: const InputDecoration(labelText: 'Descrição / Nome *'),
@@ -112,7 +110,6 @@ class _OperationalScreenState extends State<OperationalScreen> {
                         v == null || v.isEmpty ? 'Obrigatório' : null,
                   ),
                   const SizedBox(height: 10),
-                  // Código
                   TextFormField(
                     controller: codeCtrl,
                     decoration: InputDecoration(
@@ -130,7 +127,6 @@ class _OperationalScreenState extends State<OperationalScreen> {
                         v == null || v.isEmpty ? 'Obrigatório' : null,
                   ),
                   const SizedBox(height: 10),
-                  // Categoria
                   DropdownButtonFormField<String>(
                     value: category,
                     items: _categories
@@ -139,11 +135,9 @@ class _OperationalScreenState extends State<OperationalScreen> {
                             DropdownMenuItem(value: c, child: Text(c)))
                         .toList(),
                     onChanged: (v) => setSheet(() => category = v!),
-                    decoration:
-                        const InputDecoration(labelText: 'Categoria *'),
+                    decoration: const InputDecoration(labelText: 'Categoria *'),
                   ),
                   const SizedBox(height: 10),
-                  // Qty + Unidade
                   Row(
                     children: [
                       Expanded(
@@ -151,8 +145,7 @@ class _OperationalScreenState extends State<OperationalScreen> {
                         child: TextFormField(
                           controller: qtyCtrl,
                           keyboardType: TextInputType.number,
-                          decoration: const InputDecoration(
-                              labelText: 'Qtd. Inicial *'),
+                          decoration: const InputDecoration(labelText: 'Qtd. Inicial *'),
                           validator: (v) {
                             if (v == null || v.isEmpty) return 'Obrigatório';
                             if (double.tryParse(v) == null) return 'Número inválido';
@@ -169,14 +162,12 @@ class _OperationalScreenState extends State<OperationalScreen> {
                                   value: u, child: Text(u)))
                               .toList(),
                           onChanged: (v) => setSheet(() => unit = v!),
-                          decoration:
-                              const InputDecoration(labelText: 'Unid.'),
+                          decoration: const InputDecoration(labelText: 'Unid.'),
                         ),
                       ),
                     ],
                   ),
                   const SizedBox(height: 10),
-                  // Custo unitário
                   TextFormField(
                     controller: costCtrl,
                     keyboardType: TextInputType.number,
@@ -185,7 +176,6 @@ class _OperationalScreenState extends State<OperationalScreen> {
                         prefixText: 'R\$ '),
                   ),
                   const SizedBox(height: 10),
-                  // Estoque mínimo
                   TextFormField(
                     controller: minCtrl,
                     keyboardType: TextInputType.number,
@@ -193,14 +183,11 @@ class _OperationalScreenState extends State<OperationalScreen> {
                         labelText: 'Estoque Mínimo (alerta)'),
                   ),
                   const SizedBox(height: 10),
-                  // Fornecedor
                   TextFormField(
                     controller: supplierCtrl,
-                    decoration:
-                        const InputDecoration(labelText: 'Fornecedor'),
+                    decoration: const InputDecoration(labelText: 'Fornecedor'),
                   ),
                   const SizedBox(height: 10),
-                  // Localização
                   TextFormField(
                     controller: locationCtrl,
                     decoration: const InputDecoration(
@@ -219,11 +206,9 @@ class _OperationalScreenState extends State<OperationalScreen> {
                           description: nameCtrl.text.trim(),
                           qty: double.tryParse(qtyCtrl.text) ?? 0,
                           unit: unit,
-                          cost:
-                              double.tryParse(costCtrl.text) ?? 0,
+                          cost: double.tryParse(costCtrl.text) ?? 0,
                           location: locationCtrl.text.trim(),
-                          minimumStock:
-                              double.tryParse(minCtrl.text) ?? 5,
+                          minimumStock: double.tryParse(minCtrl.text) ?? 5,
                           supplier: supplierCtrl.text.trim().isEmpty
                               ? null
                               : supplierCtrl.text.trim(),
@@ -242,18 +227,21 @@ class _OperationalScreenState extends State<OperationalScreen> {
     );
   }
 
-  // ─── Dialog de movimentação (entrada/saída) ───────────────────────────────
-
   void _showMovementSheet(InventoryItem item) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final sheetBg = isDark ? AppColors.bgCard : Colors.white;
+    final borderCol = isDark ? AppColors.border : const Color(0xFFDDDDDD);
+    final textHigh = isDark ? AppColors.textHigh : const Color(0xFF1A1A1A);
+    final textLow = isDark ? AppColors.textLow : const Color(0xFF757575);
+    bool isEntry = true;
     final qtyCtrl = TextEditingController();
     final reasonCtrl = TextEditingController();
-    bool isEntry = true;
     final op = Provider.of<OperationalProvider>(context, listen: false);
 
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      backgroundColor: AppColors.bgCard,
+      backgroundColor: sheetBg,
       shape: const RoundedRectangleBorder(
           borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
       builder: (ctx) => StatefulBuilder(
@@ -270,29 +258,26 @@ class _OperationalScreenState extends State<OperationalScreen> {
                       width: 40,
                       height: 4,
                       decoration: BoxDecoration(
-                          color: AppColors.border,
+                          color: borderCol,
                           borderRadius: BorderRadius.circular(2))),
                 ),
                 const SizedBox(height: 16),
                 Text('Movimentação — ${item.description}',
-                    style: const TextStyle(
+                    style: TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.bold,
-                        color: AppColors.textHigh)),
+                        color: textHigh)),
                 const SizedBox(height: 4),
                 Text('Saldo atual: ${item.balanceLabel}',
-                    style: const TextStyle(
-                        color: AppColors.textLow, fontSize: 13)),
+                    style: TextStyle(color: textLow, fontSize: 13)),
                 const SizedBox(height: 16),
-                // Toggle Entrada / Saída
                 Row(
                   children: [
                     Expanded(
                       child: GestureDetector(
                         onTap: () => setSheet(() => isEntry = true),
                         child: Container(
-                          padding:
-                              const EdgeInsets.symmetric(vertical: 12),
+                          padding: const EdgeInsets.symmetric(vertical: 12),
                           decoration: BoxDecoration(
                             color: isEntry
                                 ? AppColors.neonGreen.withValues(alpha: 0.15)
@@ -301,7 +286,7 @@ class _OperationalScreenState extends State<OperationalScreen> {
                             border: Border.all(
                                 color: isEntry
                                     ? AppColors.neonGreen
-                                    : AppColors.border),
+                                    : borderCol),
                           ),
                           child: Row(
                             mainAxisAlignment: MainAxisAlignment.center,
@@ -309,14 +294,14 @@ class _OperationalScreenState extends State<OperationalScreen> {
                               Icon(Icons.add,
                                   color: isEntry
                                       ? AppColors.neonGreen
-                                      : AppColors.textLow,
+                                      : textLow,
                                   size: 18),
                               const SizedBox(width: 6),
                               Text('Entrada',
                                   style: TextStyle(
                                       color: isEntry
                                           ? AppColors.neonGreen
-                                          : AppColors.textLow,
+                                          : textLow,
                                       fontWeight: FontWeight.bold)),
                             ],
                           ),
@@ -328,8 +313,7 @@ class _OperationalScreenState extends State<OperationalScreen> {
                       child: GestureDetector(
                         onTap: () => setSheet(() => isEntry = false),
                         child: Container(
-                          padding:
-                              const EdgeInsets.symmetric(vertical: 12),
+                          padding: const EdgeInsets.symmetric(vertical: 12),
                           decoration: BoxDecoration(
                             color: !isEntry
                                 ? AppColors.neonRed.withValues(alpha: 0.15)
@@ -338,7 +322,7 @@ class _OperationalScreenState extends State<OperationalScreen> {
                             border: Border.all(
                                 color: !isEntry
                                     ? AppColors.neonRed
-                                    : AppColors.border),
+                                    : borderCol),
                           ),
                           child: Row(
                             mainAxisAlignment: MainAxisAlignment.center,
@@ -346,14 +330,14 @@ class _OperationalScreenState extends State<OperationalScreen> {
                               Icon(Icons.remove,
                                   color: !isEntry
                                       ? AppColors.neonRed
-                                      : AppColors.textLow,
+                                      : textLow,
                                   size: 18),
                               const SizedBox(width: 6),
                               Text('Saída',
                                   style: TextStyle(
                                       color: !isEntry
                                           ? AppColors.neonRed
-                                          : AppColors.textLow,
+                                          : textLow,
                                       fontWeight: FontWeight.bold)),
                             ],
                           ),
@@ -393,16 +377,21 @@ class _OperationalScreenState extends State<OperationalScreen> {
                       final qty = double.tryParse(qtyCtrl.text);
                       if (qty == null || qty <= 0) return;
                       final delta = isEntry ? qty : -qty;
-                      op.updateBalance(item.code, delta,
-                          reasonCtrl.text.isEmpty ? (isEntry ? 'Entrada' : 'Saída') : reasonCtrl.text);
+                      op.updateBalance(
+                          item.code,
+                          delta,
+                          reasonCtrl.text.isEmpty
+                              ? (isEntry ? 'Entrada' : 'Saída')
+                              : reasonCtrl.text);
                       HapticFeedback.lightImpact();
                       Navigator.pop(ctx);
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(
                           content: Text(
                               '${isEntry ? '+' : '-'}${qty.toInt()} ${item.unit} em ${item.description}'),
-                          backgroundColor:
-                              isEntry ? AppColors.neonGreen : AppColors.neonRed,
+                          backgroundColor: isEntry
+                              ? AppColors.neonGreen
+                              : AppColors.neonRed,
                         ),
                       );
                     },
@@ -411,26 +400,26 @@ class _OperationalScreenState extends State<OperationalScreen> {
                   ),
                 ),
                 const SizedBox(height: 12),
-                // NOVO: Botão de Excluir Produto (Manual)
                 SizedBox(
                   width: double.infinity,
                   child: OutlinedButton.icon(
                     style: OutlinedButton.styleFrom(
                       foregroundColor: AppColors.neonRed,
-                      side: const BorderSide(color: AppColors.neonRed, width: 1.2),
+                      side: const BorderSide(
+                          color: AppColors.neonRed, width: 1.2),
                       padding: const EdgeInsets.symmetric(vertical: 12),
                     ),
                     icon: const Icon(Icons.delete_outline, size: 18),
                     label: const Text('Excluir Produto do Estoque',
                         style: TextStyle(fontWeight: FontWeight.bold)),
                     onPressed: () async {
-                      Navigator.pop(ctx); // fecha o sheet de movimento
+                      Navigator.pop(ctx);
                       final confirm = await showDialog<bool>(
                         context: context,
                         builder: (c) => AlertDialog(
                           title: const Text('Confirmar Exclusão'),
-                          content:
-                              Text('Remover "${item.description}" permanentemente?'),
+                          content: Text(
+                              'Remover "${item.description}" permanentemente?'),
                           actions: [
                             TextButton(
                                 onPressed: () => Navigator.pop(c, false),
@@ -449,7 +438,8 @@ class _OperationalScreenState extends State<OperationalScreen> {
                         if (context.mounted) {
                           ScaffoldMessenger.of(context).showSnackBar(
                             SnackBar(
-                              content: Text('${item.description} excluído.'),
+                              content:
+                                  Text('${item.description} excluído.'),
                               backgroundColor: AppColors.neonRed,
                             ),
                           );
@@ -466,10 +456,12 @@ class _OperationalScreenState extends State<OperationalScreen> {
     );
   }
 
-  // ─── Build ─────────────────────────────────────────────────────────────────
-
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final borderCol = isDark ? AppColors.border : const Color(0xFFDDDDDD);
+    final cardBg = isDark ? AppColors.bgCard : const Color(0xFFF5F5F5);
+    final textLow = isDark ? AppColors.textLow : const Color(0xFF757575);
     final op = Provider.of<OperationalProvider>(context);
 
     return Scaffold(
@@ -481,7 +473,6 @@ class _OperationalScreenState extends State<OperationalScreen> {
       ),
       body: Column(
         children: [
-          // ─ Barra de busca + scanner + filtro
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
             child: Row(
@@ -489,17 +480,15 @@ class _OperationalScreenState extends State<OperationalScreen> {
                 Expanded(
                   child: TextField(
                     controller: _searchCtrl,
-                    onChanged: (v) {
-                      op.setSearch(v);
-                    },
+                    onChanged: (v) => op.setSearch(v),
                     decoration: InputDecoration(
                       hintText: 'Buscar código, nome, corredor…',
                       prefixIcon:
-                          const Icon(Icons.search, color: AppColors.textLow),
+                          Icon(Icons.search, color: textLow),
                       suffixIcon: _searchCtrl.text.isNotEmpty
                           ? IconButton(
-                              icon: const Icon(Icons.close,
-                                  color: AppColors.textLow, size: 18),
+                              icon: Icon(Icons.close,
+                                  color: textLow, size: 18),
                               onPressed: () {
                                 _searchCtrl.clear();
                                 op.setSearch('');
@@ -516,10 +505,10 @@ class _OperationalScreenState extends State<OperationalScreen> {
                   ),
                 ),
                 const SizedBox(width: 8),
-                // Botão scanner
                 IconButton(
                   style: IconButton.styleFrom(
-                      backgroundColor: AppColors.neonCyan.withValues(alpha: 0.12),
+                      backgroundColor:
+                          AppColors.neonCyan.withValues(alpha: 0.12),
                       shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(12))),
                   icon: const Icon(Icons.qr_code_scanner,
@@ -528,7 +517,6 @@ class _OperationalScreenState extends State<OperationalScreen> {
                   tooltip: 'Escanear código',
                 ),
                 const SizedBox(width: 4),
-                // Botão filtro
                 IconButton(
                   style: IconButton.styleFrom(
                     backgroundColor: _filterOpen
@@ -540,7 +528,7 @@ class _OperationalScreenState extends State<OperationalScreen> {
                   icon: Icon(Icons.filter_list,
                       color: _filterOpen
                           ? AppColors.neonPurple
-                          : AppColors.textLow),
+                          : textLow),
                   onPressed: () =>
                       setState(() => _filterOpen = !_filterOpen),
                 ),
@@ -548,7 +536,6 @@ class _OperationalScreenState extends State<OperationalScreen> {
             ),
           ),
 
-          // ─ Chips de categoria (expansível)
           AnimatedSize(
             duration: const Duration(milliseconds: 250),
             child: _filterOpen
@@ -568,17 +555,16 @@ class _OperationalScreenState extends State<OperationalScreen> {
                           label: Text(cat),
                           selected: active,
                           onSelected: (_) {
-                            setState(
-                                () => _selectedCategory = cat);
+                            setState(() => _selectedCategory = cat);
                             op.setCategoryFilter(
                                 cat == 'Todos' ? null : cat);
                           },
-                          selectedColor:
-                              AppColors.neonPurple.withValues(alpha: 0.2),
+                          selectedColor: AppColors.neonPurple
+                              .withValues(alpha: 0.2),
                           labelStyle: TextStyle(
                               color: active
                                   ? AppColors.neonPurple
-                                  : AppColors.textLow,
+                                  : textLow,
                               fontWeight: active
                                   ? FontWeight.bold
                                   : FontWeight.normal),
@@ -586,8 +572,10 @@ class _OperationalScreenState extends State<OperationalScreen> {
                               color: active
                                   ? AppColors.neonPurple
                                       .withValues(alpha: 0.6)
-                                  : AppColors.border),
-                          backgroundColor: AppColors.bgSurface,
+                                  : borderCol),
+                          backgroundColor: isDark
+                              ? AppColors.bgSurface
+                              : const Color(0xFFF0F0F0),
                         );
                       },
                     ),
@@ -595,20 +583,17 @@ class _OperationalScreenState extends State<OperationalScreen> {
                 : const SizedBox.shrink(),
           ),
 
-          // ─ KPI rápido
           if (!op.isLoading)
             Padding(
               padding:
                   const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
               child: Row(
                 children: [
-                  _kpiChip(
-                      '${op.totalItems} itens',
-                      Icons.inventory_2_outlined,
-                      AppColors.neonCyan),
+                  _kpiChip('${op.totalItems} itens',
+                      Icons.inventory_2_outlined, AppColors.neonCyan),
                   const SizedBox(width: 8),
                   _kpiChip(
-                      '${op.lowStockItems.length} reposicões',
+                      '${op.lowStockItems.length} reposições',
                       Icons.warning_amber,
                       op.lowStockItems.isEmpty
                           ? AppColors.neonGreen
@@ -622,51 +607,53 @@ class _OperationalScreenState extends State<OperationalScreen> {
               ),
             ),
 
-          // ─ Loading
           if (op.isLoading && op.items.isEmpty)
             Expanded(
               child: ListView.separated(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 16, vertical: 8),
                 itemCount: 5,
                 separatorBuilder: (_, __) => const SizedBox(height: 12),
                 itemBuilder: (_, __) => const ShimmerLoading(height: 100),
               ),
             )
           else
-
-          // ─ Lista
-          Expanded(
-            child: RefreshIndicator(
-              color: AppColors.neonCyan,
-              onRefresh: () => op.loadFromApi(),
-child: op.status == ProviderStatus.error
-                  ? EmptyStateWidget(
-                      icon: Icons.cloud_off,
-                      title: 'Erro de Conexão',
-                      message: op.errorMessage ?? 'Não foi possível carregar o estoque.',
-                      onRefresh: () => op.loadFromApi(),
-                    )
-                  : op.items.isEmpty
-                      ? const EmptyStateWidget(
-                          icon: Icons.inventory_2_outlined,
-                          title: 'Estoque Vazio',
-                          message: 'Adicione itens ou ajuste os filtros para ver os resultados.',
-                        )
-                      : ListView.builder(
-                      padding: EdgeInsets.fromLTRB(
-                          16, 4, 16, MediaQuery.of(context).padding.bottom + 80),
-                      itemCount: op.items.length,
-                      itemBuilder: (ctx, i) =>
-                          _itemCard(ctx, op.items[i], op),
-                    ),
+            Expanded(
+              child: RefreshIndicator(
+                color: AppColors.neonCyan,
+                onRefresh: () => op.loadFromApi(),
+                child: op.status == ProviderStatus.error
+                    ? EmptyStateWidget(
+                        icon: Icons.cloud_off,
+                        title: 'Erro de Conexão',
+                        message: op.errorMessage ??
+                            'Não foi possível carregar o estoque.',
+                        onRefresh: () => op.loadFromApi(),
+                      )
+                    : op.items.isEmpty
+                        ? const EmptyStateWidget(
+                            icon: Icons.inventory_2_outlined,
+                            title: 'Estoque Vazio',
+                            message:
+                                'Adicione itens ou ajuste os filtros para ver os resultados.',
+                          )
+                        : ListView.builder(
+                            padding: EdgeInsets.fromLTRB(
+                                16,
+                                4,
+                                16,
+                                MediaQuery.of(context).padding.bottom + 100),
+                            itemCount: op.items.length,
+                            itemBuilder: (ctx, i) =>
+                                _itemCard(ctx, op.items[i], op, cardBg,
+                                    borderCol, textLow),
+                          ),
+              ),
             ),
-          ),
         ],
       ),
     );
   }
-
-  // ─── Widgets auxiliares ─────────────────────────────────────────────────────
 
   Widget _kpiChip(String label, IconData icon, Color color) {
     return Container(
@@ -691,13 +678,19 @@ child: op.status == ProviderStatus.error
     );
   }
 
-  // _emptyState removido em favor do EmptyStateWidget
-
   Widget _itemCard(
-      BuildContext ctx, InventoryItem item, OperationalProvider op) {
+    BuildContext ctx,
+    InventoryItem item,
+    OperationalProvider op,
+    Color cardBg,
+    Color borderCol,
+    Color textLow,
+  ) {
     final lowStock = item.isLowStock;
     final statusColor =
         lowStock ? AppColors.neonRed : AppColors.neonGreen;
+    final isDark = Theme.of(ctx).brightness == Brightness.dark;
+    final textHigh = isDark ? AppColors.textHigh : const Color(0xFF1A1A1A);
 
     return Dismissible(
       key: Key(item.code),
@@ -716,8 +709,7 @@ child: op.status == ProviderStatus.error
         context: ctx,
         builder: (_) => AlertDialog(
           title: const Text('Confirmar Exclusão'),
-          content:
-              Text('Remover "${item.description}" do estoque?'),
+          content: Text('Remover "${item.description}" do estoque?'),
           actions: [
             TextButton(
                 onPressed: () => Navigator.pop(ctx, false),
@@ -741,10 +733,10 @@ child: op.status == ProviderStatus.error
           margin: const EdgeInsets.only(bottom: 12),
           clipBehavior: Clip.antiAlias,
           decoration: BoxDecoration(
-            color: AppColors.bgCard,
+            color: cardBg,
             borderRadius: BorderRadius.circular(16),
             border: Border.all(
-                color: AppColors.border.withValues(alpha: 0.5)),
+                color: borderCol.withValues(alpha: 0.5)),
           ),
           child: IntrinsicHeight(
             child: Row(
@@ -759,49 +751,51 @@ child: op.status == ProviderStatus.error
                           width: 46,
                           height: 46,
                           decoration: BoxDecoration(
-                            color: statusColor.withValues(alpha: 0.1),
+                            color:
+                                statusColor.withValues(alpha: 0.1),
                             borderRadius: BorderRadius.circular(12),
                           ),
-                          child: Icon(_iconForCategory(item.category),
-                              color: statusColor, size: 22),
+                          child: Icon(
+                              _iconForCategory(item.category),
+                              color: statusColor,
+                              size: 22),
                         ),
                         const SizedBox(width: 14),
                         Expanded(
                           child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
+                            crossAxisAlignment:
+                                CrossAxisAlignment.start,
                             children: [
                               Text(item.description,
-                                  style: const TextStyle(
+                                  style: TextStyle(
                                       fontWeight: FontWeight.bold,
                                       fontSize: 15,
-                                      color: AppColors.textHigh)),
+                                      color: textHigh)),
                               const SizedBox(height: 3),
                               Text(
                                   '${item.code} • ${item.category}',
-                                  style: const TextStyle(
-                                      color: AppColors.textLow,
+                                  style: TextStyle(
+                                      color: textLow,
                                       fontSize: 11)),
                               const SizedBox(height: 5),
                               Row(
                                 children: [
-                                  const Icon(Icons.location_on,
-                                      size: 12,
-                                      color: AppColors.textLow),
+                                  Icon(Icons.location_on,
+                                      size: 12, color: textLow),
                                   const SizedBox(width: 3),
                                   Text(item.location,
-                                      style: const TextStyle(
+                                      style: TextStyle(
                                           fontSize: 11,
-                                          color: AppColors.textLow)),
+                                          color: textLow)),
                                   if (item.supplier != null) ...[
                                     const SizedBox(width: 8),
-                                    const Icon(Icons.local_shipping,
-                                        size: 12,
-                                        color: AppColors.textLow),
+                                    Icon(Icons.local_shipping,
+                                        size: 12, color: textLow),
                                     const SizedBox(width: 3),
                                     Text(item.supplier!,
-                                        style: const TextStyle(
+                                        style: TextStyle(
                                             fontSize: 11,
-                                            color: AppColors.textLow)),
+                                            color: textLow)),
                                   ]
                                 ],
                               ),
@@ -820,9 +814,8 @@ child: op.status == ProviderStatus.error
                             if (item.cost > 0)
                               Text(
                                   'R\$ ${item.totalValue.toStringAsFixed(0)}',
-                                  style: const TextStyle(
-                                      fontSize: 10,
-                                      color: AppColors.textLow)),
+                                  style: TextStyle(
+                                      fontSize: 10, color: textLow)),
                             if (lowStock)
                               Container(
                                 margin: const EdgeInsets.only(top: 5),
@@ -831,7 +824,8 @@ child: op.status == ProviderStatus.error
                                 decoration: BoxDecoration(
                                   color: AppColors.neonRed
                                       .withValues(alpha: 0.15),
-                                  borderRadius: BorderRadius.circular(10),
+                                  borderRadius:
+                                      BorderRadius.circular(10),
                                 ),
                                 child: const Text('Repor',
                                     style: TextStyle(
