@@ -1,4 +1,4 @@
-// PR-D — DashboardScreen: KPIs reais do OperationalProvider, gráficos com dados válidos, sem Random fake
+// PR-D v2 — DashboardScreen: light/dark adaptativo + timeout no getForecast
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
@@ -20,7 +20,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
   Map<String, dynamic> _forecast = {};
   bool _loadingForecast = true;
 
-  // Dados do gráfico de tendência (carregado da API ou mock)
   final List<FlSpot> _trendSpots = [
     const FlSpot(0, 10),
     const FlSpot(1, 15),
@@ -37,10 +36,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _loadForecast();
     });
-    // Refresh leve a cada 30s (apenas re-render do provider, sem Random)
     _refreshTimer = Timer.periodic(
-        const Duration(seconds: 30),
-        (_) => setState(() {}));
+        const Duration(seconds: 30), (_) => setState(() {}));
   }
 
   @override
@@ -50,9 +47,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Future<void> _loadForecast() async {
-    // Tenta carregar forecast do item mais crítico
-    final op =
-        Provider.of<OperationalProvider>(context, listen: false);
+    final op = Provider.of<OperationalProvider>(context, listen: false);
     final critical = op.lowStockItems.isNotEmpty
         ? op.lowStockItems.first
         : (op.items.isNotEmpty ? op.items.first : null);
@@ -63,8 +58,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }
 
     try {
-      final data =
-          await ApiService.instance.getForecast(critical.code);
+      // FIX: timeout de 10s para não travar o dashboard
+      final data = await ApiService.instance
+          .getForecast(critical.code)
+          .timeout(const Duration(seconds: 10));
       if (mounted) setState(() {
         _forecast = data;
         _loadingForecast = false;
@@ -76,9 +73,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final op = Provider.of<OperationalProvider>(context);
 
-    // KPIs reais
+    final cardBg = isDark ? AppColors.bgCard : const Color(0xFFF5F5F5);
+    final borderCol = isDark ? AppColors.border : const Color(0xFFDDDDDD);
+    final textHigh = isDark ? AppColors.textHigh : const Color(0xFF1A1A1A);
+    final textLow = isDark ? AppColors.textLow : const Color(0xFF757575);
+
     final capitalK = op.totalStockValue / 1000;
     final rupturasEvitadas = op.lowStockItems.length;
     final totalItens = op.totalItems;
@@ -91,33 +93,30 @@ class _DashboardScreenState extends State<DashboardScreen> {
       },
       child: ListView(
         padding: EdgeInsets.fromLTRB(
-            16, 16, 16, MediaQuery.of(context).padding.bottom + 80),
+            16, 16, 16, MediaQuery.of(context).padding.bottom + 100),
         children: [
           // ─ Header
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Text(
+              Text(
                 'Lakehouse: Visão Ouro',
                 style: TextStyle(
                     fontSize: 20,
                     fontWeight: FontWeight.bold,
-                    color: AppColors.textHigh),
+                    color: textHigh),
               ),
               Container(
-                padding: const EdgeInsets.symmetric(
-                    horizontal: 10, vertical: 5),
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                 decoration: BoxDecoration(
                   color: AppColors.neonGreen.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(10),
                   border: Border.all(
-                      color: AppColors.neonGreen
-                          .withValues(alpha: 0.3)),
+                      color: AppColors.neonGreen.withValues(alpha: 0.3)),
                 ),
                 child: const Row(
                   children: [
-                    Icon(Icons.sync,
-                        size: 12, color: AppColors.neonGreen),
+                    Icon(Icons.sync, size: 12, color: AppColors.neonGreen),
                     SizedBox(width: 4),
                     Text('LIVE',
                         style: TextStyle(
@@ -132,7 +131,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
           const SizedBox(height: 16),
 
-          // ─ KPIs reais (3 cards)
+          // ─ KPIs
           Row(
             children: [
               Expanded(
@@ -141,6 +140,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   'R\$ ${capitalK.toStringAsFixed(1)}K',
                   Icons.attach_money,
                   AppColors.neonGreen,
+                  cardBg: cardBg,
+                  borderCol: borderCol,
+                  textLow: textLow,
                 ),
               ),
               const SizedBox(width: 12),
@@ -149,9 +151,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   'Reposições Urgentes',
                   '$rupturasEvitadas itens',
                   Icons.warning_amber,
-                  rupturasEvitadas > 0
-                      ? AppColors.neonRed
-                      : AppColors.neonGreen,
+                  rupturasEvitadas > 0 ? AppColors.neonRed : AppColors.neonGreen,
+                  cardBg: cardBg,
+                  borderCol: borderCol,
+                  textLow: textLow,
                 ),
               ),
             ],
@@ -163,25 +166,28 @@ class _DashboardScreenState extends State<DashboardScreen> {
             Icons.inventory_2_outlined,
             AppColors.neonCyan,
             fullWidth: true,
+            cardBg: cardBg,
+            borderCol: borderCol,
+            textLow: textLow,
           ),
 
           const SizedBox(height: 24),
 
           // ─ Curva ABC
-          const Text(
+          Text(
             'Curva ABC Inteligente',
             style: TextStyle(
                 fontSize: 17,
                 fontWeight: FontWeight.w700,
-                color: AppColors.textHigh),
+                color: textHigh),
           ),
           const SizedBox(height: 12),
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: AppColors.bgCard,
+              color: cardBg,
               borderRadius: BorderRadius.circular(20),
-              border: Border.all(color: AppColors.border),
+              border: Border.all(color: borderCol),
             ),
             child: Column(
               children: [
@@ -227,15 +233,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   ),
                 ),
                 const SizedBox(height: 12),
-                // Legenda
                 Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    _abcLegend(AppColors.neonRed, 'A — Alto valor'),
+                    _abcLegend(AppColors.neonRed, 'A — Alto valor', textLow),
                     const SizedBox(width: 16),
-                    _abcLegend(AppColors.neonAmber, 'B — Médio'),
+                    _abcLegend(AppColors.neonAmber, 'B — Médio', textLow),
                     const SizedBox(width: 16),
-                    _abcLegend(AppColors.neonCyan, 'C — Baixo'),
+                    _abcLegend(AppColors.neonCyan, 'C — Baixo', textLow),
                   ],
                 ),
               ],
@@ -244,21 +249,21 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
           const SizedBox(height: 24),
 
-          // ─ Tendência de Demanda
-          const Text(
+          // ─ Tendência
+          Text(
             'Tendência de Demanda (6 meses)',
             style: TextStyle(
                 fontSize: 17,
                 fontWeight: FontWeight.w700,
-                color: AppColors.textHigh),
+                color: textHigh),
           ),
           const SizedBox(height: 12),
           Container(
             padding: const EdgeInsets.fromLTRB(8, 20, 16, 12),
             decoration: BoxDecoration(
-              color: AppColors.bgCard,
+              color: cardBg,
               borderRadius: BorderRadius.circular(20),
-              border: Border.all(color: AppColors.border),
+              border: Border.all(color: borderCol),
             ),
             child: SizedBox(
               height: 180,
@@ -267,33 +272,28 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   gridData: FlGridData(
                     show: true,
                     drawVerticalLine: false,
-                    getDrawingHorizontalLine: (_) => const FlLine(
-                        color: AppColors.border, strokeWidth: 1),
+                    getDrawingHorizontalLine: (_) =>
+                        FlLine(color: borderCol, strokeWidth: 1),
                   ),
                   titlesData: FlTitlesData(
                     leftTitles: const AxisTitles(
-                        sideTitles:
-                            SideTitles(showTitles: false)),
+                        sideTitles: SideTitles(showTitles: false)),
                     topTitles: const AxisTitles(
-                        sideTitles:
-                            SideTitles(showTitles: false)),
+                        sideTitles: SideTitles(showTitles: false)),
                     rightTitles: const AxisTitles(
-                        sideTitles:
-                            SideTitles(showTitles: false)),
+                        sideTitles: SideTitles(showTitles: false)),
                     bottomTitles: AxisTitles(
                       sideTitles: SideTitles(
                         showTitles: true,
                         reservedSize: 22,
                         getTitlesWidget: (v, _) {
                           final i = v.toInt();
-                          if (i < 0 ||
-                              i >= _trendLabels.length) {
+                          if (i < 0 || i >= _trendLabels.length) {
                             return const SizedBox();
                           }
                           return Text(_trendLabels[i],
-                              style: const TextStyle(
-                                  fontSize: 10,
-                                  color: AppColors.textLow));
+                              style: TextStyle(
+                                  fontSize: 10, color: textLow));
                         },
                       ),
                     ),
@@ -309,8 +309,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       dotData: const FlDotData(show: false),
                       belowBarData: BarAreaData(
                         show: true,
-                        color: AppColors.neonCyan
-                            .withValues(alpha: 0.12),
+                        color: AppColors.neonCyan.withValues(alpha: 0.12),
                       ),
                     ),
                   ],
@@ -319,82 +318,84 @@ class _DashboardScreenState extends State<DashboardScreen> {
             ),
           ),
 
-          // ─ Forecast do item crítico
+          // ─ Forecast IA
           if (_loadingForecast) ...[
             const SizedBox(height: 24),
-            const Text(
+            Text(
               'Forecast IA — Item Crítico',
               style: TextStyle(
                   fontSize: 17,
                   fontWeight: FontWeight.w700,
-                  color: AppColors.textHigh),
+                  color: textHigh),
             ),
             const SizedBox(height: 12),
             const ShimmerLoading(height: 120, borderRadius: 16),
           ] else if (_forecast.isNotEmpty) ...[
-              const SizedBox(height: 24),
-              const Text(
-                'Forecast IA — Item Crítico',
-                style: TextStyle(
-                    fontSize: 17,
-                    fontWeight: FontWeight.w700,
-                    color: AppColors.textHigh),
+            const SizedBox(height: 24),
+            Text(
+              'Forecast IA — Item Crítico',
+              style: TextStyle(
+                  fontSize: 17,
+                  fontWeight: FontWeight.w700,
+                  color: textHigh),
+            ),
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: cardBg,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(
+                    color: AppColors.neonAmber.withValues(alpha: 0.3)),
               ),
-              const SizedBox(height: 12),
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: AppColors.bgCard,
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(
-                      color: AppColors.neonAmber
-                          .withValues(alpha: 0.3)),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: (_forecast.entries
-                      .take(4)
-                      .map(
-                        (e) => Padding(
-                          padding:
-                              const EdgeInsets.symmetric(vertical: 3),
-                          child: Row(
-                            mainAxisAlignment:
-                                MainAxisAlignment.spaceBetween,
-                            children: [
-                              Text(e.key,
-                                  style: const TextStyle(
-                                      color: AppColors.textLow,
-                                      fontSize: 12)),
-                              Text(e.value.toString(),
-                                  style: const TextStyle(
-                                      color: AppColors.textHigh,
-                                      fontSize: 12,
-                                      fontWeight:
-                                          FontWeight.bold)),
-                            ],
-                          ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: (_forecast.entries
+                    .take(4)
+                    .map(
+                      (e) => Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 3),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text(e.key,
+                                style: TextStyle(
+                                    color: textLow, fontSize: 12)),
+                            Text(e.value.toString(),
+                                style: TextStyle(
+                                    color: textHigh,
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.bold)),
+                          ],
                         ),
-                      )
-                      .toList()),
-                ),
+                      ),
+                    )
+                    .toList()),
               ),
-            ],
+            ),
+          ],
         ],
       ),
     );
   }
 
-  Widget _kpiCard(String title, String value, IconData icon,
-      Color color, {bool fullWidth = false}) {
+  Widget _kpiCard(
+    String title,
+    String value,
+    IconData icon,
+    Color color, {
+    bool fullWidth = false,
+    required Color cardBg,
+    required Color borderCol,
+    required Color textLow,
+  }) {
     return Container(
       width: fullWidth ? double.infinity : null,
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: AppColors.bgCard,
+        color: cardBg,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-            color: color.withValues(alpha: 0.2)),
+        border: Border.all(color: color.withValues(alpha: 0.2)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -405,8 +406,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
               const SizedBox(width: 8),
               Expanded(
                 child: Text(title,
-                    style: TextStyle(
-                        color: AppColors.textLow, fontSize: 12),
+                    style: TextStyle(color: textLow, fontSize: 12),
                     overflow: TextOverflow.ellipsis),
               ),
             ],
@@ -422,18 +422,17 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  Widget _abcLegend(Color color, String label) {
+  Widget _abcLegend(Color color, String label, Color textColor) {
     return Row(
       children: [
         Container(
             width: 10,
             height: 10,
-            decoration: BoxDecoration(
-                color: color, shape: BoxShape.circle)),
+            decoration:
+                BoxDecoration(color: color, shape: BoxShape.circle)),
         const SizedBox(width: 5),
         Text(label,
-            style: const TextStyle(
-                fontSize: 11, color: AppColors.textLow)),
+            style: TextStyle(fontSize: 11, color: textColor)),
       ],
     );
   }
