@@ -1,5 +1,5 @@
-// v2: GlassNavBar + AnimatedSwitcher com FadeTransition entre tabs
-// FIX #1: removido AgendaProvider.init() duplicado do initState
+// home_screen v3 — AppBar exibe subítulo de contagem da agenda para a tab Agenda
+//                   AgendaScreen não tem mais AppBar próprio
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -9,8 +9,8 @@ import 'package:frontend/core/providers/agenda_provider.dart';
 import 'package:frontend/core/providers/theme_provider.dart';
 import 'package:frontend/presentation/theme/app_theme.dart';
 import 'package:frontend/presentation/widgets/glass_nav_bar.dart';
+import 'package:frontend/presentation/screens/agenda_screen.dart';
 import 'agent_screen.dart';
-import 'agenda_screen.dart';
 import 'dashboard_screen.dart';
 import 'operational_screen.dart';
 import 'financial_screen.dart';
@@ -23,10 +23,8 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen>
-    with SingleTickerProviderStateMixin {
+class _HomeScreenState extends State<HomeScreen> {
   int _currentIndex = 0;
-  int _previousIndex = 0;
 
   static const _titles = [
     'Agente IA',
@@ -48,24 +46,39 @@ class _HomeScreenState extends State<HomeScreen>
 
   void _onTabTap(int index) {
     if (index == _currentIndex) return;
-    setState(() {
-      _previousIndex = _currentIndex;
-      _currentIndex = index;
-    });
+    setState(() => _currentIndex = index);
   }
 
   @override
   Widget build(BuildContext context) {
-    final userProvider = Provider.of<UserProvider>(context);
-    final opProvider = Provider.of<OperationalProvider>(context);
-    final agendaProvider = Provider.of<AgendaProvider>(context);
+    final userProvider  = Provider.of<UserProvider>(context);
+    final opProvider    = Provider.of<OperationalProvider>(context);
+    final agendaProvider= Provider.of<AgendaProvider>(context);
     final themeProvider = Provider.of<ThemeProvider>(context);
-    final alertCount = opProvider.lowStockItems.length;
+
+    final alertCount  = opProvider.lowStockItems.length;
     final todayEvents = agendaProvider.todayCount;
-    final isDark = themeProvider.isDark;
+    final urgentCount = agendaProvider.urgentCount;
+    final isDark      = themeProvider.isDark;
+
+    // Subítulo dinâmico por tab
+    final subtitles = [
+      userProvider.companyName,            // Agente
+      '${opProvider.totalItems} itens cadastrados', // Indicadores
+      alertCount > 0
+          ? '$alertCount reposições urgentes'
+          : 'Estoque OK',                   // Operacional
+      'Atualizado: período 30d',            // Financeiro
+      todayEvents == 0
+          ? 'Nenhum evento hoje'
+          : urgentCount > 0
+              ? '$todayEvents evento(s) — $urgentCount urgente(s)'
+              : '$todayEvents evento(s) hoje', // Agenda
+      userProvider.companyName,            // Governança
+    ];
 
     return Scaffold(
-      extendBody: true, // body aparece atras da GlassNavBar
+      extendBody: true,
       appBar: AppBar(
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -79,11 +92,12 @@ class _HomeScreenState extends State<HomeScreen>
               ),
             ),
             Text(
-              userProvider.companyName,
+              subtitles[_currentIndex],
               style: TextStyle(
                 fontSize: 11,
                 color: isDark ? AppColors.textLow : AppColors.lgTextLow,
               ),
+              overflow: TextOverflow.ellipsis,
             ),
           ],
         ),
@@ -155,14 +169,10 @@ class _HomeScreenState extends State<HomeScreen>
         surfaceTintColor: Colors.transparent,
       ),
 
-      // AnimatedSwitcher com FadeTransition entre tabs
       body: AnimatedSwitcher(
-        duration: const Duration(milliseconds: 200),
+        duration: const Duration(milliseconds: 180),
         transitionBuilder: (child, animation) => FadeTransition(
-          opacity: CurvedAnimation(
-            parent: animation,
-            curve: Curves.easeInOut,
-          ),
+          opacity: CurvedAnimation(parent: animation, curve: Curves.easeInOut),
           child: child,
         ),
         child: KeyedSubtree(
@@ -171,7 +181,6 @@ class _HomeScreenState extends State<HomeScreen>
         ),
       ),
 
-      // Glassmorphism bottom nav
       bottomNavigationBar: GlassNavBar(
         currentIndex: _currentIndex,
         onTap: _onTabTap,
@@ -220,7 +229,7 @@ class _HomeScreenState extends State<HomeScreen>
           const BottomNavigationBarItem(
             icon: Icon(Icons.admin_panel_settings_outlined),
             activeIcon: Icon(Icons.admin_panel_settings),
-            label: 'Governânça',
+            label: 'Governança',
           ),
         ],
       ),

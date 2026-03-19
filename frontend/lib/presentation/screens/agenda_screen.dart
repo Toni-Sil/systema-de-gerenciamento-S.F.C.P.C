@@ -1,4 +1,4 @@
-// agenda_screen v2 — light/dark adaptativo
+// agenda_screen v3 — sem AppBar próprio (usa HomeScreen global) + tokens AppColors.lg* canônicos
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -71,12 +71,7 @@ class _AgendaScreenState extends State<AgendaScreen>
       if (mounted) _showError('Microfone não disponível. Verifique a permissão.');
       return;
     }
-    if (mounted) {
-      setState(() {
-        _isListening = true;
-        _voicePartial = 'Ouvindo...';
-      });
-    }
+    if (mounted) setState(() { _isListening = true; _voicePartial = 'Ouvindo...'; });
     _pulseCtrl.repeat(reverse: true);
 
     final result = await voice.listen(
@@ -122,77 +117,74 @@ class _AgendaScreenState extends State<AgendaScreen>
     ));
   }
 
+  // ── BUILD: sem Scaffold próprio, sem AppBar — usa o HomeScreen AppBar global ──
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final textHigh = isDark ? AppColors.textHigh : const Color(0xFF1A1A1A);
-    final textLow = isDark ? AppColors.textLow : const Color(0xFF757575);
-    final bgBase = isDark ? AppColors.bgBase : const Color(0xFFF8F8F8);
+    final isDark  = Theme.of(context).brightness == Brightness.dark;
+    final textHigh= isDark ? AppColors.textHigh : AppColors.lgTextHigh;
+    final textLow = isDark ? AppColors.textLow  : AppColors.lgTextLow;
 
     final agenda = context.watch<AgendaProvider>();
-    return Scaffold(
-      backgroundColor: bgBase,
-      appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        title: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('Agenda',
-                style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                    color: textHigh)),
-            Text('${agenda.todayCount} evento(s) hoje',
-                style: TextStyle(fontSize: 11, color: textLow)),
-          ],
+
+    return Column(
+      children: [
+        // ── Barra de ações específicas da agenda (sem duplicar título)
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 4, 8, 0),
+          child: Row(
+            children: [
+              Text(
+                '${agenda.todayCount} evento(s) hoje',
+                style: TextStyle(fontSize: 12, color: textLow),
+              ),
+              const Spacer(),
+              IconButton(
+                icon: Icon(Icons.notifications_outlined, color: textLow, size: 20),
+                onPressed: () => NotificationService.instance
+                    .showDailySummary(agenda.todaySummaryForAgent),
+                tooltip: 'Resumo do dia',
+                visualDensity: VisualDensity.compact,
+              ),
+              IconButton(
+                icon: const Icon(Icons.add, color: AppColors.neonCyan, size: 22),
+                onPressed: () => _showAddEventDialog(context),
+                tooltip: 'Novo evento',
+                visualDensity: VisualDensity.compact,
+              ),
+            ],
+          ),
         ),
-        actions: [
-          IconButton(
-            icon: Icon(Icons.notifications_outlined, color: textLow),
-            onPressed: () => NotificationService.instance
-                .showDailySummary(agenda.todaySummaryForAgent),
-            tooltip: 'Resumo do dia',
-          ),
-          IconButton(
-            icon: const Icon(Icons.add, color: AppColors.neonCyan),
-            onPressed: () => _showAddEventDialog(context),
-            tooltip: 'Novo evento',
-          ),
-        ],
-      ),
-      body: Column(
-        children: [
-          _buildWeekStrip(agenda, textHigh, textLow),
-          _buildTodaySummaryCard(agenda, textLow),
-          Expanded(child: _buildEventList(agenda, textLow)),
-        ],
-      ),
-      floatingActionButton: _buildVoiceFab(textHigh),
+        _buildWeekStrip(agenda, textHigh, textLow),
+        _buildTodaySummaryCard(agenda, textLow),
+        Expanded(child: _buildEventList(agenda, textLow)),
+      ],
     );
   }
 
-  Widget _buildWeekStrip(
-      AgendaProvider agenda, Color textHigh, Color textLow) {
-    final today = DateTime.now();
+  Widget _buildWeekStrip(AgendaProvider agenda, Color textHigh, Color textLow) {
+    final today  = DateTime.now();
     final monday = today.subtract(Duration(days: today.weekday - 1));
-    final days = List.generate(7, (i) => monday.add(Duration(days: i)));
+    final days   = List.generate(7, (i) => monday.add(Duration(days: i)));
     return Container(
       height: 72,
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
       child: Row(
         children: days.map((day) {
           final isSelected = day.year == agenda.selectedDay.year &&
               day.month == agenda.selectedDay.month &&
-              day.day == agenda.selectedDay.day;
+              day.day  == agenda.selectedDay.day;
           final isToday = day.year == today.year &&
               day.month == today.month &&
-              day.day == today.day;
+              day.day   == today.day;
           final hasEvents = agenda.events.any((e) =>
-              e.dateTime.year == day.year &&
+              e.dateTime.year  == day.year &&
               e.dateTime.month == day.month &&
-              e.dateTime.day == day.day &&
+              e.dateTime.day   == day.day &&
               e.status != EventStatus.cancelado);
+
+          final isDark = Theme.of(context).brightness == Brightness.dark;
+          final borderCanon = isDark ? AppColors.border : AppColors.lgBorder;
+
           return Expanded(
             child: GestureDetector(
               onTap: () => agenda.setSelectedDay(day),
@@ -209,39 +201,31 @@ class _AgendaScreenState extends State<AgendaScreen>
                         ? AppColors.neonCyan
                         : isToday
                             ? AppColors.neonCyan.withValues(alpha: 0.4)
-                            : Theme.of(context).dividerColor,
+                            : borderCanon,
                   ),
                 ),
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     Text(
-                      const ['Seg','Ter','Qua','Qui','Sex','Sáb','Dom']
-                          [day.weekday - 1],
+                      const ['Seg','Ter','Qua','Qui','Sex','Sáb','Dom'][day.weekday - 1],
                       style: TextStyle(
-                        fontSize: 10,
-                        color: isSelected
-                            ? AppColors.neonCyan
-                            : textLow,
-                      ),
+                          fontSize: 10,
+                          color: isSelected ? AppColors.neonCyan : textLow),
                     ),
                     const SizedBox(height: 4),
                     Text('${day.day}',
                         style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                          color: isSelected
-                              ? AppColors.neonCyan
-                              : textHigh,
-                        )),
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                            color: isSelected ? AppColors.neonCyan : textHigh)),
                     if (hasEvents)
                       Container(
                         width: 4, height: 4,
                         margin: const EdgeInsets.only(top: 3),
                         decoration: const BoxDecoration(
-                          color: AppColors.neonCyan,
-                          shape: BoxShape.circle,
-                        ),
+                            color: AppColors.neonCyan,
+                            shape: BoxShape.circle),
                       )
                     else
                       const SizedBox(height: 7),
@@ -260,17 +244,17 @@ class _AgendaScreenState extends State<AgendaScreen>
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
       child: GlassCard(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
         gradientColors: const [AppColors.neonCyan, AppColors.neonPurple],
         child: Row(
           children: [
-            const Icon(Icons.today, color: AppColors.neonCyan, size: 20),
+            const Icon(Icons.today, color: AppColors.neonCyan, size: 18),
             const SizedBox(width: 10),
             Expanded(
               child: Text(
                 agenda.todaySummaryForAgent,
                 style: TextStyle(fontSize: 12, color: textMed),
-                maxLines: 3,
+                maxLines: 2,
                 overflow: TextOverflow.ellipsis,
               ),
             ),
@@ -288,10 +272,10 @@ class _AgendaScreenState extends State<AgendaScreen>
           mainAxisSize: MainAxisSize.min,
           children: [
             Icon(Icons.event_available,
-                size: 56, color: textLow.withValues(alpha: 0.4)),
+                size: 52, color: textLow.withValues(alpha: 0.35)),
             const SizedBox(height: 12),
             Text('Nenhum evento neste dia',
-                style: TextStyle(color: textLow)),
+                style: TextStyle(color: textLow, fontSize: 14)),
             const SizedBox(height: 8),
             TextButton.icon(
               onPressed: () => _showAddEventDialog(context),
@@ -311,10 +295,10 @@ class _AgendaScreenState extends State<AgendaScreen>
   }
 
   Widget _buildEventCard(AgendaEvent event, AgendaProvider agenda) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final cardBg = isDark ? AppColors.bgCard : const Color(0xFFF5F5F5);
-    final textHigh = isDark ? AppColors.textHigh : const Color(0xFF1A1A1A);
-    final textLow = isDark ? AppColors.textLow : const Color(0xFF757575);
+    final isDark  = Theme.of(context).brightness == Brightness.dark;
+    final cardBg  = isDark ? AppColors.bgCard    : AppColors.lgBgCard;
+    final textHigh= isDark ? AppColors.textHigh  : AppColors.lgTextHigh;
+    final textLow = isDark ? AppColors.textLow   : AppColors.lgTextLow;
 
     return Dismissible(
       key: Key(event.id),
@@ -346,7 +330,7 @@ class _AgendaScreenState extends State<AgendaScreen>
         padding: const EdgeInsets.only(right: 20),
         margin: const EdgeInsets.only(bottom: 10),
         decoration: BoxDecoration(
-          color: AppColors.neonRed.withValues(alpha: 0.2),
+          color: AppColors.neonRed.withValues(alpha: 0.15),
           borderRadius: BorderRadius.circular(16),
         ),
         child: const Icon(Icons.delete_outline, color: AppColors.neonRed),
@@ -355,7 +339,7 @@ class _AgendaScreenState extends State<AgendaScreen>
         margin: const EdgeInsets.only(bottom: 10),
         child: FlatCard(
           onTap: () => _showEventDetail(context, event, agenda),
-          borderColor: event.priorityColor.withValues(alpha: 0.5),
+          borderColor: event.priorityColor.withValues(alpha: 0.45),
           child: Row(
             children: [
               Container(
@@ -371,7 +355,7 @@ class _AgendaScreenState extends State<AgendaScreen>
                 children: [
                   Text(event.formattedTime,
                       style: TextStyle(
-                          fontSize: 18,
+                          fontSize: 17,
                           fontWeight: FontWeight.w800,
                           color: textHigh)),
                   if (event.duration != null)
@@ -386,8 +370,7 @@ class _AgendaScreenState extends State<AgendaScreen>
                   children: [
                     Row(
                       children: [
-                        Icon(event.categoryIcon,
-                            size: 14, color: textLow),
+                        Icon(event.categoryIcon, size: 13, color: textLow),
                         const SizedBox(width: 4),
                         Expanded(
                           child: Text(
@@ -398,10 +381,9 @@ class _AgendaScreenState extends State<AgendaScreen>
                               color: event.status == EventStatus.concluido
                                   ? textLow
                                   : textHigh,
-                              decoration:
-                                  event.status == EventStatus.concluido
-                                      ? TextDecoration.lineThrough
-                                      : null,
+                              decoration: event.status == EventStatus.concluido
+                                  ? TextDecoration.lineThrough
+                                  : null,
                             ),
                             overflow: TextOverflow.ellipsis,
                           ),
@@ -418,24 +400,27 @@ class _AgendaScreenState extends State<AgendaScreen>
                     if (event.location != null) ...[
                       const SizedBox(height: 3),
                       Row(children: [
-                        Icon(Icons.location_on_outlined,
-                            size: 11, color: textLow),
+                        Icon(Icons.location_on_outlined, size: 11, color: textLow),
                         const SizedBox(width: 3),
-                        Text(event.location!,
-                            style: TextStyle(
-                                fontSize: 11, color: textLow)),
+                        Expanded(
+                          child: Text(event.location!,
+                              style: TextStyle(fontSize: 11, color: textLow),
+                              overflow: TextOverflow.ellipsis),
+                        ),
                       ]),
                     ],
                   ],
                 ),
               ),
+              const SizedBox(width: 8),
               Column(
+                mainAxisSize: MainAxisSize.min,
                 children: [
                   if (event.isVoiceCreated)
                     Padding(
                       padding: const EdgeInsets.only(bottom: 6),
-                      child: const Icon(Icons.mic,
-                          size: 12, color: AppColors.neonCyan),
+                      child: const Icon(Icons.mic, size: 12,
+                          color: AppColors.neonCyan),
                     ),
                   if (event.status != EventStatus.concluido)
                     GestureDetector(
@@ -443,12 +428,11 @@ class _AgendaScreenState extends State<AgendaScreen>
                       child: Container(
                         padding: const EdgeInsets.all(4),
                         decoration: BoxDecoration(
-                          color:
-                              AppColors.neonGreen.withValues(alpha: 0.15),
+                          color: AppColors.neonGreen.withValues(alpha: 0.15),
                           shape: BoxShape.circle,
                         ),
-                        child: const Icon(Icons.check,
-                            size: 14, color: AppColors.neonGreen),
+                        child: const Icon(Icons.check, size: 14,
+                            color: AppColors.neonGreen),
                       ),
                     ),
                 ],
@@ -460,7 +444,10 @@ class _AgendaScreenState extends State<AgendaScreen>
     );
   }
 
-  Widget _buildVoiceFab(Color textHigh) {
+  Widget _buildVoiceFab() {
+    final isDark  = Theme.of(context).brightness == Brightness.dark;
+    final textHigh= isDark ? AppColors.textHigh : AppColors.lgTextHigh;
+
     return Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.end,
@@ -468,8 +455,7 @@ class _AgendaScreenState extends State<AgendaScreen>
         if (_isListening && _voicePartial.isNotEmpty)
           Container(
             margin: const EdgeInsets.only(bottom: 8),
-            padding:
-                const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             decoration: BoxDecoration(
               color: Theme.of(context).colorScheme.surface,
               borderRadius: BorderRadius.circular(20),
@@ -486,10 +472,8 @@ class _AgendaScreenState extends State<AgendaScreen>
             child: child,
           ),
           child: FloatingActionButton.extended(
-            onPressed:
-                _isListening ? _stopVoiceListening : _startVoiceListening,
-            backgroundColor:
-                _isListening ? AppColors.neonRed : AppColors.neonCyan,
+            onPressed: _isListening ? _stopVoiceListening : _startVoiceListening,
+            backgroundColor: _isListening ? AppColors.neonRed : AppColors.neonCyan,
             foregroundColor: AppColors.bgDeep,
             icon: Icon(_isListening ? Icons.stop : Icons.mic_none),
             label: Text(_isListening ? 'Parar' : 'Agendar por voz'),
@@ -500,17 +484,16 @@ class _AgendaScreenState extends State<AgendaScreen>
   }
 
   void _showAddEventDialog(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final sheetBg = isDark ? AppColors.bgCard : Colors.white;
-    final textHigh = isDark ? AppColors.textHigh : const Color(0xFF1A1A1A);
-    final textLow = isDark ? AppColors.textLow : const Color(0xFF757575);
+    final isDark  = Theme.of(context).brightness == Brightness.dark;
+    final sheetBg = isDark ? AppColors.bgCard  : AppColors.lgBgCard;
+    final textHigh= isDark ? AppColors.textHigh : AppColors.lgTextHigh;
+    final textLow = isDark ? AppColors.textLow  : AppColors.lgTextLow;
 
     final titleCtrl = TextEditingController();
-    final descCtrl = TextEditingController();
+    final descCtrl  = TextEditingController();
     final localCtrl = TextEditingController();
     final agendaProvider = context.read<AgendaProvider>();
-    final initialDay = agendaProvider.selectedDay;
-    DateTime selectedDate = initialDay;
+    DateTime selectedDate = agendaProvider.selectedDay;
     TimeOfDay selectedTime = TimeOfDay.now();
     EventCategory category = EventCategory.outro;
     EventPriority priority = EventPriority.normal;
@@ -521,8 +504,7 @@ class _AgendaScreenState extends State<AgendaScreen>
       isScrollControlled: true,
       backgroundColor: sheetBg,
       shape: const RoundedRectangleBorder(
-          borderRadius:
-              BorderRadius.vertical(top: Radius.circular(24))),
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
       builder: (sheetCtx) => StatefulBuilder(
         builder: (sheetCtx, setS) => Padding(
           padding: EdgeInsets.only(
@@ -543,34 +525,31 @@ class _AgendaScreenState extends State<AgendaScreen>
                               color: textHigh)),
                     ),
                     IconButton(
-                      icon: Icon(Icons.close, color: textLow),
-                      onPressed: () => Navigator.pop(sheetCtx),
-                    ),
+                        icon: Icon(Icons.close, color: textLow),
+                        onPressed: () => Navigator.pop(sheetCtx)),
                   ],
                 ),
                 const SizedBox(height: 12),
                 TextField(
                   controller: titleCtrl,
-                  decoration:
-                      const InputDecoration(labelText: 'Título *'),
+                  decoration: const InputDecoration(labelText: 'Título *'),
                   autofocus: true,
                   textCapitalization: TextCapitalization.sentences,
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: 10),
                 TextField(
                   controller: descCtrl,
-                  decoration:
-                      const InputDecoration(labelText: 'Descrição'),
+                  decoration: const InputDecoration(labelText: 'Descrição'),
                   maxLines: 2,
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: 10),
                 TextField(
                   controller: localCtrl,
                   decoration: const InputDecoration(
                       labelText: 'Local',
                       prefixIcon: Icon(Icons.location_on_outlined)),
                 ),
-                const SizedBox(height: 16),
+                const SizedBox(height: 14),
                 Row(
                   children: [
                     Expanded(
@@ -579,16 +558,16 @@ class _AgendaScreenState extends State<AgendaScreen>
                           final d = await showDatePicker(
                             context: sheetCtx,
                             initialDate: selectedDate,
-                            firstDate: DateTime.now()
-                                .subtract(const Duration(days: 1)),
-                            lastDate: DateTime.now()
-                                .add(const Duration(days: 365)),
+                            firstDate: DateTime.now().subtract(const Duration(days: 1)),
+                            lastDate: DateTime.now().add(const Duration(days: 365)),
                           );
                           if (d != null) setS(() => selectedDate = d);
                         },
                         icon: const Icon(Icons.calendar_today, size: 14),
                         label: Text(
-                            '${selectedDate.day.toString().padLeft(2, '0')}/${selectedDate.month.toString().padLeft(2, '0')}'),
+                          '${selectedDate.day.toString().padLeft(2, '0')}/'
+                          '${selectedDate.month.toString().padLeft(2, '0')}',
+                        ),
                       ),
                     ),
                     const SizedBox(width: 8),
@@ -596,8 +575,7 @@ class _AgendaScreenState extends State<AgendaScreen>
                       child: OutlinedButton.icon(
                         onPressed: () async {
                           final t = await showTimePicker(
-                              context: sheetCtx,
-                              initialTime: selectedTime);
+                              context: sheetCtx, initialTime: selectedTime);
                           if (t != null) setS(() => selectedTime = t);
                         },
                         icon: const Icon(Icons.access_time, size: 14),
@@ -614,12 +592,12 @@ class _AgendaScreenState extends State<AgendaScreen>
                   spacing: 6, runSpacing: 4,
                   children: EventCategory.values.map((c) {
                     const labels = {
-                      EventCategory.reuniao: 'Reunião',
-                      EventCategory.entrega: 'Entrega',
-                      EventCategory.reposicao: 'Reposição',
+                      EventCategory.reuniao:    'Reunião',
+                      EventCategory.entrega:    'Entrega',
+                      EventCategory.reposicao:  'Reposição',
                       EventCategory.financeiro: 'Financeiro',
-                      EventCategory.pessoal: 'Pessoal',
-                      EventCategory.outro: 'Outro',
+                      EventCategory.pessoal:    'Pessoal',
+                      EventCategory.outro:      'Outro',
                     };
                     return ChoiceChip(
                       label: Text(labels[c]!),
@@ -636,9 +614,9 @@ class _AgendaScreenState extends State<AgendaScreen>
                   spacing: 6,
                   children: EventPriority.values.map((p) {
                     const names = {
-                      EventPriority.baixa: 'Baixa',
-                      EventPriority.normal: 'Normal',
-                      EventPriority.alta: 'Alta',
+                      EventPriority.baixa:   'Baixa',
+                      EventPriority.normal:  'Normal',
+                      EventPriority.alta:    'Alta',
                       EventPriority.urgente: 'Urgente',
                     };
                     return ChoiceChip(
@@ -651,23 +629,19 @@ class _AgendaScreenState extends State<AgendaScreen>
                 const SizedBox(height: 12),
                 Row(
                   children: [
-                    Text('Notificar',
-                        style: TextStyle(color: textLow)),
+                    Text('Notificar', style: TextStyle(color: textLow)),
                     const SizedBox(width: 8),
                     DropdownButton<int>(
                       value: notifyMin,
                       dropdownColor: sheetBg,
                       style: TextStyle(color: textHigh),
-                      items: [10, 15, 30, 60, 120].map((m) {
-                        return DropdownMenuItem(
+                      items: [10, 15, 30, 60, 120].map((m) =>
+                        DropdownMenuItem(
                           value: m,
-                          child: Text(m < 60
-                              ? '${m}min antes'
-                              : '${m ~/ 60}h antes'),
-                        );
-                      }).toList(),
-                      onChanged: (v) =>
-                          setS(() => notifyMin = v ?? 30),
+                          child: Text(m < 60 ? '${m}min antes' : '${m ~/ 60}h antes'),
+                        ),
+                      ).toList(),
+                      onChanged: (v) => setS(() => notifyMin = v ?? 30),
                     ),
                   ],
                 ),
@@ -680,25 +654,21 @@ class _AgendaScreenState extends State<AgendaScreen>
                       if (t.isEmpty) {
                         ScaffoldMessenger.of(sheetCtx).showSnackBar(
                           const SnackBar(
-                              content: Text(
-                                  'Digite um título para o evento.')),
+                              content: Text('Digite um título para o evento.')),
                         );
                         return;
                       }
                       final dt = DateTime(
-                        selectedDate.year, selectedDate.month,
-                        selectedDate.day,
+                        selectedDate.year, selectedDate.month, selectedDate.day,
                         selectedTime.hour, selectedTime.minute,
                       );
                       agendaProvider.addEvent(AgendaEvent(
                         id: Uid.generate(),
                         title: t,
                         description: descCtrl.text.trim().isNotEmpty
-                            ? descCtrl.text.trim()
-                            : null,
+                            ? descCtrl.text.trim() : null,
                         location: localCtrl.text.trim().isNotEmpty
-                            ? localCtrl.text.trim()
-                            : null,
+                            ? localCtrl.text.trim() : null,
                         dateTime: dt,
                         category: category,
                         priority: priority,
@@ -722,18 +692,17 @@ class _AgendaScreenState extends State<AgendaScreen>
 
   void _showEventDetail(
       BuildContext context, AgendaEvent event, AgendaProvider agenda) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final sheetBg = isDark ? AppColors.bgCard : Colors.white;
-    final textHigh = isDark ? AppColors.textHigh : const Color(0xFF1A1A1A);
-    final textLow = isDark ? AppColors.textLow : const Color(0xFF757575);
-    final textMed = isDark ? AppColors.textMed : const Color(0xFF555555);
+    final isDark  = Theme.of(context).brightness == Brightness.dark;
+    final sheetBg = isDark ? AppColors.bgCard   : AppColors.lgBgCard;
+    final textHigh= isDark ? AppColors.textHigh : AppColors.lgTextHigh;
+    final textLow = isDark ? AppColors.textLow  : AppColors.lgTextLow;
+    final textMed = isDark ? AppColors.textMed  : AppColors.lgTextMed;
 
     showModalBottomSheet(
       context: context,
       backgroundColor: sheetBg,
       shape: const RoundedRectangleBorder(
-          borderRadius:
-              BorderRadius.vertical(top: Radius.circular(24))),
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
       builder: (_) => Padding(
         padding: const EdgeInsets.all(24),
         child: Column(
@@ -742,8 +711,7 @@ class _AgendaScreenState extends State<AgendaScreen>
           children: [
             Row(
               children: [
-                Icon(event.categoryIcon,
-                    color: event.priorityColor, size: 22),
+                Icon(event.categoryIcon, color: event.priorityColor, size: 22),
                 const SizedBox(width: 10),
                 Expanded(
                   child: Text(event.title,
@@ -753,8 +721,7 @@ class _AgendaScreenState extends State<AgendaScreen>
                           color: textHigh)),
                 ),
                 Container(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 10, vertical: 4),
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                   decoration: BoxDecoration(
                     color: event.priorityColor.withValues(alpha: 0.15),
                     borderRadius: BorderRadius.circular(20),
@@ -779,18 +746,15 @@ class _AgendaScreenState extends State<AgendaScreen>
                   'Duração: ${event.duration!.inMinutes} minutos',
                   textLow, textMed),
             if (event.location != null)
-              _detailRow(
-                  Icons.location_on_outlined, event.location!,
+              _detailRow(Icons.location_on_outlined, event.location!,
                   textLow, textMed),
             if (event.description != null)
-              _detailRow(Icons.notes, event.description!,
-                  textLow, textMed),
+              _detailRow(Icons.notes, event.description!, textLow, textMed),
             _detailRow(Icons.notifications_outlined,
                 'Lembrete ${event.notifyMinutes}min antes',
                 textLow, textMed),
             if (event.isVoiceCreated)
-              _detailRow(Icons.mic, 'Criado por voz',
-                  textLow, textMed),
+              _detailRow(Icons.mic, 'Criado por voz', textLow, textMed),
             const SizedBox(height: 20),
             Row(
               children: [
