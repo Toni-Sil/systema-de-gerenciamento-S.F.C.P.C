@@ -30,10 +30,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
   ];
   final List<String> _trendLabels = ['Out', 'Nov', 'Dez', 'Jan', 'Fev', 'Mar'];
 
-  // Formata valor em pt-BR: 1234.5 → "1.234,5" / em K: "1,2K"
   String _fmtK(double v) {
     final k = v / 1000;
-    // garante separador de milhar apenas se >= 10K
     if (k >= 10) {
       final s = k.toStringAsFixed(0);
       return 'R\$ ${_addDotThousands(s)}K';
@@ -92,7 +90,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final op = Provider.of<OperationalProvider>(context);
 
-    // ── Tokens canônicos do AppColors (sem Color() inline) ──
     final cardBg   = isDark ? AppColors.bgCard    : AppColors.lgBgCard;
     final borderCol= isDark ? AppColors.border     : AppColors.lgBorder;
     final textHigh = isDark ? AppColors.textHigh   : AppColors.lgTextHigh;
@@ -102,6 +99,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final urgentes        = op.lowStockItems.length;
     final totalItens      = op.totalItems;
     final custoReposicao  = op.restockEstimatedCost;
+
+    // Responsividade: detecta tablet (largura >= 600px)
+    final screenWidth = MediaQuery.of(context).size.width;
+    final isTablet = screenWidth >= 600;
 
     return RefreshIndicator(
       color: AppColors.neonCyan,
@@ -154,70 +155,82 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
           const SizedBox(height: 16),
 
-          // ── KPIs: linha 1 ────────────────────────────────
-          Row(
-            children: [
-              Expanded(
-                child: _kpiCard(
-                  label: 'Capital em Estoque',
-                  value: _fmtK(capitalK),
-                  icon: Icons.attach_money,
-                  color: AppColors.neonGreen,
-                  cardBg: cardBg,
-                  borderCol: borderCol,
-                  textLow: textLow,
+          // ── KPIs: 4 colunas em tablet, 2x2 em mobile ──
+          if (isTablet)
+            Row(
+              children: [
+                Expanded(child: _kpiCard(label: 'Capital em Estoque', value: _fmtK(capitalK), icon: Icons.attach_money, color: AppColors.neonGreen, cardBg: cardBg, borderCol: borderCol, textLow: textLow)),
+                const SizedBox(width: 12),
+                Expanded(child: _kpiCard(label: 'Reposições Urgentes', value: '$urgentes ${urgentes == 1 ? "item" : "itens"}', icon: Icons.warning_amber_rounded, color: urgentes > 0 ? AppColors.neonRed : AppColors.neonGreen, cardBg: cardBg, borderCol: borderCol, textLow: textLow)),
+                const SizedBox(width: 12),
+                Expanded(child: _kpiCard(label: 'Total de Produtos', value: '$totalItens ${totalItens == 1 ? "item" : "itens"}', icon: Icons.inventory_2_outlined, color: AppColors.neonCyan, cardBg: cardBg, borderCol: borderCol, textLow: textLow)),
+                const SizedBox(width: 12),
+                Expanded(child: _kpiCard(label: 'Custo Est. Reposição', value: custoReposicao > 0 ? _fmtK(custoReposicao) : 'Estoque OK', icon: Icons.price_change_outlined, color: custoReposicao > 0 ? AppColors.neonAmber : AppColors.neonGreen, cardBg: cardBg, borderCol: borderCol, textLow: textLow)),
+              ],
+            )
+          else ...[
+            Row(
+              children: [
+                Expanded(
+                  child: _kpiCard(
+                    label: 'Capital em Estoque',
+                    value: _fmtK(capitalK),
+                    icon: Icons.attach_money,
+                    color: AppColors.neonGreen,
+                    cardBg: cardBg,
+                    borderCol: borderCol,
+                    textLow: textLow,
+                  ),
                 ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: _kpiCard(
-                  label: 'Reposições Urgentes',
-                  value: '$urgentes ${urgentes == 1 ? "item" : "itens"}',
-                  icon: Icons.warning_amber_rounded,
-                  color: urgentes > 0
-                      ? AppColors.neonRed
-                      : AppColors.neonGreen,
-                  cardBg: cardBg,
-                  borderCol: borderCol,
-                  textLow: textLow,
+                const SizedBox(width: 12),
+                Expanded(
+                  child: _kpiCard(
+                    label: 'Reposições Urgentes',
+                    value: '$urgentes ${urgentes == 1 ? "item" : "itens"}',
+                    icon: Icons.warning_amber_rounded,
+                    color: urgentes > 0
+                        ? AppColors.neonRed
+                        : AppColors.neonGreen,
+                    cardBg: cardBg,
+                    borderCol: borderCol,
+                    textLow: textLow,
+                  ),
                 ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-
-          // ── KPIs: linha 2 ────────────────────────────────
-          Row(
-            children: [
-              Expanded(
-                child: _kpiCard(
-                  label: 'Total de Produtos',
-                  value: '$totalItens ${totalItens == 1 ? "item" : "itens"}',
-                  icon: Icons.inventory_2_outlined,
-                  color: AppColors.neonCyan,
-                  cardBg: cardBg,
-                  borderCol: borderCol,
-                  textLow: textLow,
+              ],
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: _kpiCard(
+                    label: 'Total de Produtos',
+                    value: '$totalItens ${totalItens == 1 ? "item" : "itens"}',
+                    icon: Icons.inventory_2_outlined,
+                    color: AppColors.neonCyan,
+                    cardBg: cardBg,
+                    borderCol: borderCol,
+                    textLow: textLow,
+                  ),
                 ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: _kpiCard(
-                  label: 'Custo Est. Reposição',
-                  value: custoReposicao > 0
-                      ? _fmtK(custoReposicao)
-                      : 'Estoque OK',
-                  icon: Icons.price_change_outlined,
-                  color: custoReposicao > 0
-                      ? AppColors.neonAmber
-                      : AppColors.neonGreen,
-                  cardBg: cardBg,
-                  borderCol: borderCol,
-                  textLow: textLow,
+                const SizedBox(width: 12),
+                Expanded(
+                  child: _kpiCard(
+                    label: 'Custo Est. Reposição',
+                    value: custoReposicao > 0
+                        ? _fmtK(custoReposicao)
+                        : 'Estoque OK',
+                    icon: Icons.price_change_outlined,
+                    color: custoReposicao > 0
+                        ? AppColors.neonAmber
+                        : AppColors.neonGreen,
+                    cardBg: cardBg,
+                    borderCol: borderCol,
+                    textLow: textLow,
+                  ),
                 ),
-              ),
-            ],
-          ),
+              ],
+            ),
+          ],
 
           const SizedBox(height: 24),
 
@@ -279,17 +292,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   ),
                 ),
                 const SizedBox(height: 16),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
+                // fix: Wrap para evitar overflow em telas pequenas
+                Wrap(
+                  alignment: WrapAlignment.center,
+                  spacing: 12,
+                  runSpacing: 6,
                   children: [
-                    _abcLegend(
-                        AppColors.neonRed, 'A — Alto valor', textLow),
-                    const SizedBox(width: 16),
-                    _abcLegend(
-                        AppColors.neonAmber, 'B — Médio', textLow),
-                    const SizedBox(width: 16),
-                    _abcLegend(
-                        AppColors.neonCyan, 'C — Baixo', textLow),
+                    _abcLegend(AppColors.neonRed,   'A — Alto valor', textLow),
+                    _abcLegend(AppColors.neonAmber, 'B — Médio',      textLow),
+                    _abcLegend(AppColors.neonCyan,  'C — Baixo',      textLow),
                   ],
                 ),
               ],
@@ -452,12 +463,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
             ],
           ),
           const SizedBox(height: 10),
-          Text(value,
-              style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                  color: color),
-              overflow: TextOverflow.ellipsis),
+          // fix: FittedBox para evitar overflow em valores longos
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerLeft,
+            child: Text(value,
+                style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: color)),
+          ),
         ],
       ),
     );
