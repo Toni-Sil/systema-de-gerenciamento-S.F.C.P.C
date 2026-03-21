@@ -28,6 +28,8 @@ from models.entities import (
     AIAdminBriefingSchema,
     AIAdminProfileSchema,
     AIAdminTaskSchema,
+    AIProviderConfigSchema,
+    AIProviderConfigUpsertSchema,
     ExpenseSchema,
     FinancialSummarySchema,
     MovementSchema,
@@ -38,6 +40,7 @@ from models.entities import (
 )
 from services.financial_service import FinancialService
 from services.ai_admin_service import AIAdminService
+from services.ai_provider_service import AIProviderService
 from services.stock_service import StockService
 from services.user_service import UserService
 from routes.whatsapp_router import router as whatsapp_router
@@ -94,6 +97,13 @@ app.add_middleware(TenantMiddleware)
 app.include_router(whatsapp_router)
 
 _auth = Depends(verify_jwt_token)
+
+
+def require_admin_role(payload: dict = Depends(verify_jwt_token)) -> dict:
+    role = payload.get("role")
+    if role != "admin":
+        raise HTTPException(status_code=403, detail="Admin role required")
+    return payload
 
 
 # ---------------------------------------------------------------------------
@@ -284,6 +294,62 @@ async def feedback_ai_admin_task(task_id: UUID, payload: AIAdminTaskFeedbackRequ
         if task is None:
             raise HTTPException(status_code=404, detail="AI admin task not found")
         return task
+
+
+@v1_router.get(
+    "/agent/admin/provider-config",
+    response_model=AIProviderConfigSchema | None,
+    tags=["Agent"],
+    dependencies=[Depends(require_admin_role)],
+)
+async def get_ai_provider_config():
+    tenant_id = get_tenant_id()
+    if not tenant_id:
+        raise HTTPException(status_code=403, detail="Tenant context missing")
+
+    async with get_session() as session:
+        return await AIProviderService.get_config(tenant_id, session)
+
+
+@v1_router.put(
+    "/agent/admin/provider-config",
+    response_model=AIProviderConfigSchema,
+    tags=["Agent"],
+    dependencies=[Depends(require_admin_role)],
+)
+async def update_ai_provider_config(
+    payload: AIProviderConfigUpsertSchema,
+    auth_payload: dict = Depends(require_admin_role),
+):
+    tenant_id = get_tenant_id()
+    if not tenant_id:
+        raise HTTPException(status_code=403, detail="Tenant context missing")
+
+    async with get_session() as session:
+        return await AIProviderService.upsert_config(
+            tenant_id=tenant_id,
+            user_id=UUID(auth_payload["user_id"]),
+            payload=payload,
+            session=session,
+        )
+
+
+@v1_router.post(
+    "/agent/admin/provider-config/validate",
+    response_model=AIProviderConfigSchema,
+    tags=["Agent"],
+    dependencies=[Depends(require_admin_role)],
+)
+async def validate_ai_provider_config():
+    tenant_id = get_tenant_id()
+    if not tenant_id:
+        raise HTTPException(status_code=403, detail="Tenant context missing")
+
+    async with get_session() as session:
+        config = await AIProviderService.validate_config(tenant_id, session)
+        if config is None:
+            raise HTTPException(status_code=404, detail="AI provider config not found")
+        return config
 
 # Mount v1 router
 app.include_router(v1_router)

@@ -72,6 +72,13 @@ class AIPriorityFocus(str, Enum):
     BALANCED = "balanced"
 
 
+class AIProviderType(str, Enum):
+    OPENAI = "openai"
+    ANTHROPIC = "anthropic"
+    AZURE_OPENAI = "azure_openai"
+    LOCAL = "local"
+
+
 # ---------------------------------------------------------------------------
 # Domain attribute models
 # ---------------------------------------------------------------------------
@@ -281,3 +288,33 @@ class AIAdminProfileSchema(BaseSchema):
     prefers_whatsapp: bool = True
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class AIProviderConfigSchema(BaseSchema):
+    id: UUID = Field(default_factory=uuid4)
+    tenant_id: UUID
+    provider: AIProviderType
+    model_name: str
+    api_base_url: Optional[str] = None
+    api_key_masked: Optional[str] = None
+    is_active: bool = True
+    temperature: float = Field(default=0.2, ge=0.0, le=2.0)
+    max_tokens: int = Field(default=1200, ge=128, le=32000)
+    system_prompt_override: Optional[str] = None
+    updated_by_user_id: Optional[UUID] = None
+    last_validated_at: Optional[datetime] = None
+    last_validation_status: Optional[str] = None
+    last_validation_error: Optional[str] = None
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class AIProviderConfigUpsertSchema(BaseSchema):
+    provider: AIProviderType
+    model_name: str = Field(..., min_length=2, max_length=120)
+    api_base_url: Optional[str] = Field(default=None, max_length=255)
+    api_key: Optional[str] = Field(default=None, min_length=8, max_length=255)
+    is_active: bool = True
+    temperature: float = Field(default=0.2, ge=0.0, le=2.0)
+    max_tokens: int = Field(default=1200, ge=128, le=32000)
+    system_prompt_override: Optional[str] = Field(default=None, max_length=4000)

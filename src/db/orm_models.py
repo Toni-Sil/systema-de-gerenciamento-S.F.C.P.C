@@ -21,6 +21,7 @@ from db.session import Base
 from models.entities import (
     AIAdminFeedbackStatus,
     AICommunicationStyle,
+    AIProviderType,
     AIPriorityFocus,
     AIAdminTaskStatus,
     AIAdminTaskType,
@@ -278,3 +279,33 @@ class AIAdminBriefingORM(Base):
     metrics = Column(JSON, nullable=False)
     recommended_task_keys = Column(JSON, nullable=True)
     generated_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+
+class AIProviderConfigORM(Base):
+    __tablename__ = "ai_provider_configs"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", name="uq_ai_provider_config_tenant"),
+        Index("ix_ai_provider_configs_active", "tenant_id", "is_active"),
+    )
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
+    tenant_id = Column(UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False)
+    provider = Column(SAEnum(AIProviderType), nullable=False)
+    model_name = Column(String(120), nullable=False)
+    api_base_url = Column(String(255), nullable=True)
+    api_key_encrypted = Column(Text, nullable=True)
+    is_active = Column(Boolean, nullable=False, default=True)
+    temperature = Column(Numeric(3, 2, asdecimal=False), nullable=False, default=0.2)
+    max_tokens = Column(Numeric(5, 0, asdecimal=False), nullable=False, default=1200)
+    system_prompt_override = Column(Text, nullable=True)
+    updated_by_user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+    last_validated_at = Column(DateTime, nullable=True)
+    last_validation_status = Column(String(40), nullable=True)
+    last_validation_error = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(
+        DateTime,
+        default=datetime.utcnow,
+        onupdate=datetime.utcnow,
+        nullable=False,
+    )
