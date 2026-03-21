@@ -27,7 +27,7 @@ CREATE TABLE IF NOT EXISTS products (
     code TEXT NOT NULL, -- SKU / Internal code
     description TEXT NOT NULL,
     unit TEXT NOT NULL, -- UN, KG, LT, etc.
-    min_stock DECIMAL(12, 2) DEFAULT 0,
+    min_stock DECIMAL(12, 2) DEFAULT 0 CHECK (min_stock >= 0),
     category TEXT,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
@@ -52,7 +52,7 @@ CREATE TABLE IF NOT EXISTS stock_balances (
     product_id UUID NOT NULL REFERENCES products(id) ON DELETE CASCADE,
     batch_id UUID REFERENCES product_batches(id),
     location_id UUID REFERENCES locations(id),
-    balance DECIMAL(12, 2) NOT NULL DEFAULT 0,
+    balance DECIMAL(12, 2) NOT NULL DEFAULT 0 CHECK (balance >= 0),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     UNIQUE (tenant_id, product_id, batch_id, location_id)
 );
@@ -65,7 +65,7 @@ CREATE TABLE IF NOT EXISTS movements (
     batch_id UUID REFERENCES product_batches(id),
     location_id UUID REFERENCES locations(id),
     type TEXT NOT NULL CHECK (type IN ('ENTRY', 'EXIT', 'TRANSFER', 'ADJUSTMENT')),
-    quantity DECIMAL(12, 2) NOT NULL,
+    quantity DECIMAL(12, 2) NOT NULL CHECK (quantity > 0),
     user_id UUID, -- To be linked with Auth service later
     reference_doc TEXT, -- Invoice number / Order number
     notes TEXT,
@@ -75,4 +75,5 @@ CREATE TABLE IF NOT EXISTS movements (
 -- Indices for performance and multi-tenancy isolation
 CREATE INDEX idx_products_tenant ON products(tenant_id);
 CREATE INDEX idx_movements_tenant ON movements(tenant_id);
+CREATE INDEX idx_movements_tenant_created_at ON movements(tenant_id, created_at);
 CREATE INDEX idx_stock_balances_tenant ON stock_balances(tenant_id);

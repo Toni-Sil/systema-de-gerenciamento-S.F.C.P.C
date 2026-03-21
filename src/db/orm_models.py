@@ -11,7 +11,8 @@ from uuid import uuid4
 
 from sqlalchemy import (
     Boolean, Column, Date, DateTime, Enum as SAEnum,
-    Float, ForeignKey, Index, String, Text, UniqueConstraint, JSON
+    Float, ForeignKey, Index, String, Text, UniqueConstraint, JSON,
+    CheckConstraint,
 )
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
@@ -74,6 +75,7 @@ class ProductORM(Base):
     __table_args__ = (
         UniqueConstraint("tenant_id", "code", name="uq_product_tenant_code"),
         Index("ix_products_tenant_id", "tenant_id"),
+        CheckConstraint("min_stock >= 0", name="ck_products_min_stock_non_negative"),
     )
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
@@ -109,7 +111,15 @@ class LocationORM(Base):
 
 class BatchORM(Base):
     __tablename__ = "batches"
-    __table_args__ = (Index("ix_batches_tenant_product", "tenant_id", "product_id"),)
+    __table_args__ = (
+        UniqueConstraint(
+            "tenant_id",
+            "product_id",
+            "batch_number",
+            name="uq_batch_tenant_product_number",
+        ),
+        Index("ix_batches_tenant_product", "tenant_id", "product_id"),
+    )
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
     tenant_id = Column(UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False)
@@ -127,6 +137,7 @@ class StockBalanceORM(Base):
     __table_args__ = (
         UniqueConstraint("tenant_id", "product_id", "batch_id", "location_id", name="uq_balance_key"),
         Index("ix_stock_balance_tenant_product", "tenant_id", "product_id"),
+        CheckConstraint("balance >= 0", name="ck_stock_balances_non_negative"),
     )
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
@@ -144,6 +155,8 @@ class StockMovementORM(Base):
     __table_args__ = (
         Index("ix_movements_tenant_product", "tenant_id", "product_id"),
         Index("ix_movements_created_at", "created_at"),
+        Index("ix_movements_tenant_created_at", "tenant_id", "created_at"),
+        CheckConstraint("quantity > 0", name="ck_stock_movements_quantity_positive"),
     )
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
@@ -169,6 +182,8 @@ class ExpenseORM(Base):
     __tablename__ = "expenses"
     __table_args__ = (
         Index("ix_expenses_tenant_date", "tenant_id", "expense_date"),
+        Index("ix_expenses_tenant_category_date", "tenant_id", "category", "expense_date"),
+        CheckConstraint("value > 0", name="ck_expenses_value_positive"),
     )
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
