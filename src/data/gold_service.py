@@ -1,3 +1,4 @@
+from datetime import datetime, timedelta
 from typing import Any, Dict, List
 from uuid import UUID
 
@@ -108,14 +109,23 @@ class GoldLayerService:
         actions = []
         for item in low_stock_items[:5]:
             deficit = round(item["min_stock"] - item["total_balance"], 2)
+            priority_score = round(
+                min(100.0, 45.0 + (deficit * 4) + (15.0 if deficit >= 5 else 0.0)),
+                2,
+            )
             actions.append(
                 {
                     "type": "replenish",
-                    "priority": "high" if deficit > 0 else "medium",
+                    "priority": "high" if priority_score >= 80 else "medium",
+                    "priority_score": priority_score,
                     "product_code": item["code"],
                     "current_balance": item["total_balance"],
                     "min_stock": item["min_stock"],
                     "deficit": deficit,
+                    "due_date": (
+                        datetime.utcnow() + timedelta(hours=4 if priority_score >= 80 else 24)
+                    ).isoformat(),
+                    "reason": "Produto abaixo do estoque mínimo operacional.",
                     "message": (
                         f"Repor {item['code']} para cobrir déficit de {deficit} "
                         f"e retornar ao estoque mínimo."
@@ -124,6 +134,9 @@ class GoldLayerService:
             )
 
         return {
+            "headline": (
+                f"{len(low_stock_items)} item(ns) com risco de ruptura exigem atenção imediata."
+            ),
             "total_products": len(inventory),
             "low_stock_count": len(low_stock_items),
             "critical_items": low_stock_items[:5],

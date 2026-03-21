@@ -39,6 +39,21 @@ class ExpenseCategory(str, Enum):
     OTHER = "Outros"
 
 
+class AIAdminTaskStatus(str, Enum):
+    SUGGESTED = "suggested"
+    PENDING_APPROVAL = "pending_approval"
+    APPROVED = "approved"
+    EXECUTED = "executed"
+    DISMISSED = "dismissed"
+
+
+class AIAdminTaskType(str, Enum):
+    REPLENISHMENT = "replenishment"
+    AUDIT = "audit"
+    FOLLOW_UP = "follow_up"
+    BRIEFING = "briefing"
+
+
 # ---------------------------------------------------------------------------
 # Domain attribute models
 # ---------------------------------------------------------------------------
@@ -205,3 +220,27 @@ class FinancialSummarySchema(BaseSchema):
 
 class ChatInputSchema(BaseSchema):
     message: str = Field(..., min_length=1)
+
+
+class AIAdminTaskSchema(BaseSchema):
+    id: UUID = Field(default_factory=uuid4)
+    tenant_id: UUID
+    task_type: AIAdminTaskType
+    status: AIAdminTaskStatus = AIAdminTaskStatus.SUGGESTED
+    title: str
+    description: str
+    priority_score: float = Field(..., ge=0.0, le=100.0)
+    due_date: Optional[datetime] = None
+    task_key: str
+    context_payload: Optional[dict[str, Any]] = None
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class AIAdminBriefingSchema(BaseSchema):
+    tenant_id: UUID
+    generated_at: datetime = Field(default_factory=datetime.utcnow)
+    headline: str
+    summary: str
+    metrics: dict[str, Any]
+    recommended_tasks: list[AIAdminTaskSchema] = Field(default_factory=list)

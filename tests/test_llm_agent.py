@@ -118,16 +118,13 @@ async def test_agent_generates_admin_plan(monkeypatch):
             {
                 "status": "success",
                 "data": {
-                    "total_products": 12,
-                    "low_stock_count": 2,
-                    "critical_items": [
-                        {
-                            "code": "TEC-001",
-                            "total_balance": 3.0,
-                            "min_stock": 10.0,
-                            "is_low_stock": True,
-                        }
-                    ],
+                    "headline": "2 itens críticos",
+                    "summary": "A IA consolidou o quadro administrativo do dia.",
+                    "metrics": {
+                        "total_products": 12,
+                        "low_stock_count": 2,
+                        "urgent_task_count": 1,
+                    },
                     "recommended_actions": [
                         {
                             "type": "replenish",
@@ -142,7 +139,7 @@ async def test_agent_generates_admin_plan(monkeypatch):
         )
     )
 
-    monkeypatch.setattr("llm.agent.LLMTools.get_admin_overview", mocked_admin)
+    monkeypatch.setattr("llm.agent.LLMTools.get_daily_admin_briefing", mocked_admin)
 
     response = await AgentOrchestrator.process_message(
         tenant_id,
@@ -152,7 +149,7 @@ async def test_agent_generates_admin_plan(monkeypatch):
 
     assert payload["action"] == "AdminPlan"
     assert payload["status"] == "success"
-    assert payload["data"]["low_stock_count"] == 2
+    assert payload["data"]["metrics"]["low_stock_count"] == 2
     assert payload["data"]["recommended_actions"][0]["product_code"] == "TEC-001"
     assert "estoque abaixo do mínimo" in payload["motivo"]
     mocked_admin.assert_awaited_once_with(tenant_id=tenant_id)

@@ -6,6 +6,7 @@ from sqlalchemy import select
 
 from db.orm_models import ProductORM
 from db.session import get_session
+from services.ai_admin_service import AIAdminService
 from services.stock_service import StockService
 from data.gold_service import GoldLayerService
 
@@ -74,5 +75,28 @@ class LLMTools:
         try:
             overview = await GoldLayerService.get_admin_overview(tenant_id)
             return json.dumps({"status": "success", "data": overview})
+        except Exception as e:
+            return json.dumps({"status": "error", "message": str(e)})
+
+    @staticmethod
+    async def get_admin_work_queue(tenant_id: UUID) -> str:
+        """Sincroniza e retorna a fila de tarefas administrativas sugeridas pela IA."""
+        try:
+            async with get_session() as session:
+                tasks = await AIAdminService.sync_admin_tasks(tenant_id, session)
+            return json.dumps({
+                "status": "success",
+                "data": [task.model_dump(mode="json") for task in tasks],
+            })
+        except Exception as e:
+            return json.dumps({"status": "error", "message": str(e)})
+
+    @staticmethod
+    async def get_daily_admin_briefing(tenant_id: UUID) -> str:
+        """Retorna o briefing administrativo diário consolidado."""
+        try:
+            async with get_session() as session:
+                briefing = await AIAdminService.generate_daily_briefing(tenant_id, session)
+            return json.dumps({"status": "success", "data": briefing.model_dump(mode="json")})
         except Exception as e:
             return json.dumps({"status": "error", "message": str(e)})

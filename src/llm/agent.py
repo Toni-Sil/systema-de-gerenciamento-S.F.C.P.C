@@ -104,7 +104,7 @@ class AgentOrchestrator:
             or "plano de ação" in msg_lower
             or "plano de acao" in msg_lower
         ):
-            tool_resp = await LLMTools.get_admin_overview(tenant_id=tenant_id)
+            tool_resp = await LLMTools.get_daily_admin_briefing(tenant_id=tenant_id)
             resp_dict = json.loads(tool_resp)
 
             if resp_dict["status"] != "success":
@@ -120,7 +120,8 @@ class AgentOrchestrator:
                 "status": "success",
                 "data": overview,
                 "motivo": (
-                    f"Plano executivo gerado com {overview.get('low_stock_count', 0)} "
+                    f"Briefing administrativo gerado com "
+                    f"{overview.get('metrics', {}).get('low_stock_count', 0)} "
                     "item(ns) com estoque abaixo do mínimo."
                 ),
             }))

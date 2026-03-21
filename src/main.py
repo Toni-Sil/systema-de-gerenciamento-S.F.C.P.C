@@ -24,6 +24,8 @@ from messaging.producer import producer
 from middleware.rate_limiter import RateLimiterMiddleware
 from middleware.tenant_middleware import TenantMiddleware
 from models.entities import (
+    AIAdminBriefingSchema,
+    AIAdminTaskSchema,
     ExpenseSchema,
     FinancialSummarySchema,
     MovementSchema,
@@ -33,6 +35,7 @@ from models.entities import (
     UserSchema,
 )
 from services.financial_service import FinancialService
+from services.ai_admin_service import AIAdminService
 from services.stock_service import StockService
 from services.user_service import UserService
 from routes.whatsapp_router import router as whatsapp_router
@@ -212,6 +215,27 @@ async def chat_with_agent(chat_input: ChatMessage):
         message=chat_input.message,
     )
     return {"reply": reply}
+
+
+@v1_router.get("/agent/admin/tasks", response_model=List[AIAdminTaskSchema], tags=["Agent"])
+async def list_ai_admin_tasks():
+    tenant_id = get_tenant_id()
+    if not tenant_id:
+        raise HTTPException(status_code=403, detail="Tenant context missing")
+
+    async with get_session() as session:
+        await AIAdminService.sync_admin_tasks(tenant_id, session)
+        return await AIAdminService.list_open_tasks(tenant_id, session)
+
+
+@v1_router.get("/agent/admin/briefing", response_model=AIAdminBriefingSchema, tags=["Agent"])
+async def get_ai_admin_briefing():
+    tenant_id = get_tenant_id()
+    if not tenant_id:
+        raise HTTPException(status_code=403, detail="Tenant context missing")
+
+    async with get_session() as session:
+        return await AIAdminService.generate_daily_briefing(tenant_id, session)
 
 # Mount v1 router
 app.include_router(v1_router)

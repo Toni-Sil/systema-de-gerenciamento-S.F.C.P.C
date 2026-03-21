@@ -18,7 +18,14 @@ from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 
 from db.session import Base
-from models.entities import MovementType, ProductCategory, UserRole, ExpenseCategory
+from models.entities import (
+    AIAdminTaskStatus,
+    AIAdminTaskType,
+    MovementType,
+    ProductCategory,
+    UserRole,
+    ExpenseCategory,
+)
 
 
 def _uuid():
@@ -196,3 +203,31 @@ class ExpenseORM(Base):
     reference_doc = Column(String(120), nullable=True)  # NF number or PDF hash
     expense_date = Column(Date, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+
+class AIAdminTaskORM(Base):
+    __tablename__ = "ai_admin_tasks"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "task_key", name="uq_ai_admin_task_tenant_key"),
+        Index("ix_ai_admin_tasks_tenant_status", "tenant_id", "status"),
+        Index("ix_ai_admin_tasks_tenant_due_date", "tenant_id", "due_date"),
+        CheckConstraint("priority_score >= 0 AND priority_score <= 100", name="ck_ai_admin_task_priority_range"),
+    )
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
+    tenant_id = Column(UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False)
+    task_type = Column(SAEnum(AIAdminTaskType), nullable=False)
+    status = Column(SAEnum(AIAdminTaskStatus), nullable=False, default=AIAdminTaskStatus.SUGGESTED)
+    title = Column(String(180), nullable=False)
+    description = Column(Text, nullable=False)
+    priority_score = Column(Numeric(5, 2, asdecimal=False), nullable=False)
+    due_date = Column(DateTime, nullable=True)
+    task_key = Column(String(180), nullable=False)
+    context_payload = Column(JSON, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(
+        DateTime,
+        default=datetime.utcnow,
+        onupdate=datetime.utcnow,
+        nullable=False,
+    )
