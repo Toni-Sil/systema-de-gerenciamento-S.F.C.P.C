@@ -24,7 +24,9 @@ from messaging.producer import producer
 from middleware.rate_limiter import RateLimiterMiddleware
 from middleware.tenant_middleware import TenantMiddleware
 from models.entities import (
+    AIAdminFeedbackStatus,
     AIAdminBriefingSchema,
+    AIAdminProfileSchema,
     AIAdminTaskSchema,
     ExpenseSchema,
     FinancialSummarySchema,
@@ -207,6 +209,12 @@ from pydantic import BaseModel
 class ChatMessage(BaseModel):
     message: str
 
+
+class AIAdminTaskFeedbackRequest(BaseModel):
+    feedback_status: AIAdminFeedbackStatus
+    feedback_note: str | None = None
+    resolved_by_user_id: UUID | None = None
+
 @v1_router.post("/agent/chat", tags=["Agent"])
 async def chat_with_agent(chat_input: ChatMessage):
     from llm.agent import AgentOrchestrator
@@ -236,6 +244,46 @@ async def get_ai_admin_briefing():
 
     async with get_session() as session:
         return await AIAdminService.generate_daily_briefing(tenant_id, session)
+
+
+@v1_router.get("/agent/admin/profile", response_model=AIAdminProfileSchema, tags=["Agent"])
+async def get_ai_admin_profile():
+    tenant_id = get_tenant_id()
+    if not tenant_id:
+        raise HTTPException(status_code=403, detail="Tenant context missing")
+
+    async with get_session() as session:
+        return await AIAdminService.get_or_create_profile(tenant_id, session)
+
+
+@v1_router.put("/agent/admin/profile", response_model=AIAdminProfileSchema, tags=["Agent"])
+async def update_ai_admin_profile(profile: AIAdminProfileSchema):
+    tenant_id = get_tenant_id()
+    if not tenant_id:
+        raise HTTPException(status_code=403, detail="Tenant context missing")
+
+    async with get_session() as session:
+        return await AIAdminService.update_profile(tenant_id, session, profile)
+
+
+@v1_router.post("/agent/admin/tasks/{task_id}/feedback", response_model=AIAdminTaskSchema, tags=["Agent"])
+async def feedback_ai_admin_task(task_id: UUID, payload: AIAdminTaskFeedbackRequest):
+    tenant_id = get_tenant_id()
+    if not tenant_id:
+        raise HTTPException(status_code=403, detail="Tenant context missing")
+
+    async with get_session() as session:
+        task = await AIAdminService.record_task_feedback(
+            tenant_id=tenant_id,
+            task_id=task_id,
+            feedback_status=payload.feedback_status,
+            feedback_note=payload.feedback_note,
+            resolved_by_user_id=payload.resolved_by_user_id,
+            session=session,
+        )
+        if task is None:
+            raise HTTPException(status_code=404, detail="AI admin task not found")
+        return task
 
 # Mount v1 router
 app.include_router(v1_router)

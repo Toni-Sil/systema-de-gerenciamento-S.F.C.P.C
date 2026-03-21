@@ -17,7 +17,7 @@ if str(SRC) not in sys.path:
 os.environ.setdefault("JWT_SECRET_KEY", "test-secret-key-for-pytest-only")
 os.environ.setdefault("DATABASE_URL", "postgresql+asyncpg://user:pass@localhost/testdb")
 
-from models.entities import AIAdminTaskSchema, AIAdminTaskStatus, AIAdminTaskType
+from models.entities import AIAdminFeedbackStatus, AIAdminProfileSchema, AIAdminTaskSchema, AIAdminTaskStatus, AIAdminTaskType
 from services.ai_admin_service import AIAdminService
 
 
@@ -31,13 +31,16 @@ class _FakeResult:
     def all(self):
         return self._rows
 
+    def scalar_one_or_none(self):
+        return self._rows[0] if self._rows else None
+
 
 @pytest.mark.asyncio
 async def test_sync_admin_tasks_creates_prioritized_replenishment_tasks(monkeypatch):
     tenant_id = uuid4()
     session = AsyncMock()
     session.add = Mock()
-    session.execute.return_value = _FakeResult([])
+    session.execute.side_effect = [_FakeResult([]), _FakeResult([])]
 
     async def fake_flush():
         added_task = session.add.call_args.args[0]
@@ -80,7 +83,7 @@ async def test_sync_admin_tasks_creates_prioritized_replenishment_tasks(monkeypa
     assert tasks[0].task_key == "replenish:TEC-001"
     assert tasks[0].priority_score == 92.0
     assert tasks[0].status == AIAdminTaskStatus.SUGGESTED
-    session.add.assert_called_once()
+    assert session.add.call_count == 2  # profile + task
 
 
 @pytest.mark.asyncio
@@ -104,6 +107,20 @@ async def test_generate_daily_briefing_returns_metrics_and_tasks(monkeypatch):
     )
 
     monkeypatch.setattr(
+        AIAdminService,
+        "get_or_create_profile",
+        AsyncMock(
+            return_value=AIAdminProfileSchema(
+                tenant_id=tenant_id,
+                communication_style="detailed",
+                priority_focus="balanced",
+                briefing_hour=7,
+                max_daily_tasks=5,
+                prefers_whatsapp=True,
+            )
+        ),
+    )
+    monkeypatch.setattr(
         "services.ai_admin_service.GoldLayerService.get_admin_overview",
         AsyncMock(
             return_value={
@@ -115,14 +132,64 @@ async def test_generate_daily_briefing_returns_metrics_and_tasks(monkeypatch):
             }
         ),
     )
-    async def sync_and_return(_tenant_id, _session):
+    async def sync_and_return(_tenant_id, _session, _user_id=None):
         return [task]
 
     monkeypatch.setattr(AIAdminService, "sync_admin_tasks", sync_and_return)
+    session.add = Mock()
+    async def fake_flush():
+        added = session.add.call_args.args[0]
+        added.id = uuid4()
+    session.flush.side_effect = fake_flush
 
     briefing = await AIAdminService.generate_daily_briefing(tenant_id, session)
 
     assert briefing.metrics["low_stock_count"] == 1
     assert briefing.metrics["urgent_task_count"] == 1
     assert briefing.recommended_tasks[0].task_key == "replenish:TEC-001"
-    assert "ruptura" in briefing.summary.lower()
+    assert briefing.metrics["communication_style"] == "detailed"
+    assert "memória" in briefing.summary.lower()
+
+
+@pytest.mark.asyncio
+async def test_record_task_feedback_marks_task_as_executed():
+    tenant_id = uuid4()
+    task = type(
+        "Task",
+        (),
+        {
+            "id": uuid4(),
+            "tenant_id": tenant_id,
+            "task_type": AIAdminTaskType.REPLENISHMENT,
+            "status": AIAdminTaskStatus.SUGGESTED,
+            "title": "Repor TEC-001",
+            "description": "Repor TEC-001 imediatamente.",
+            "priority_score": 92.0,
+            "due_date": datetime.utcnow(),
+            "task_key": "replenish:TEC-001",
+            "context_payload": {},
+            "feedback_status": None,
+            "feedback_note": None,
+            "resolved_by_user_id": None,
+            "resolved_at": None,
+            "resolution_time_minutes": None,
+            "created_at": datetime.utcnow(),
+            "updated_at": datetime.utcnow(),
+        },
+    )()
+
+    session = AsyncMock()
+    session.execute.return_value = _FakeResult([task])
+
+    updated = await AIAdminService.record_task_feedback(
+        tenant_id=tenant_id,
+        task_id=task.id,
+        feedback_status=AIAdminFeedbackStatus.USEFUL,
+        feedback_note="Executado após briefing.",
+        resolved_by_user_id=uuid4(),
+        session=session,
+    )
+
+    assert updated is not None
+    assert updated.status == AIAdminTaskStatus.EXECUTED
+    assert updated.feedback_note == "Executado após briefing."

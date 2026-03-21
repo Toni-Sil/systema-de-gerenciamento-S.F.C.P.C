@@ -54,6 +54,24 @@ class AIAdminTaskType(str, Enum):
     BRIEFING = "briefing"
 
 
+class AIAdminFeedbackStatus(str, Enum):
+    USEFUL = "useful"
+    IRRELEVANT = "irrelevant"
+    INCORRECT = "incorrect"
+    AUTOMATED = "automated"
+
+
+class AICommunicationStyle(str, Enum):
+    EXECUTIVE = "executive"
+    DETAILED = "detailed"
+
+
+class AIPriorityFocus(str, Enum):
+    RUPTURE = "rupture"
+    COST = "cost"
+    BALANCED = "balanced"
+
+
 # ---------------------------------------------------------------------------
 # Domain attribute models
 # ---------------------------------------------------------------------------
@@ -233,14 +251,33 @@ class AIAdminTaskSchema(BaseSchema):
     due_date: Optional[datetime] = None
     task_key: str
     context_payload: Optional[dict[str, Any]] = None
+    feedback_status: Optional[AIAdminFeedbackStatus] = None
+    feedback_note: Optional[str] = None
+    resolved_by_user_id: Optional[UUID] = None
+    resolved_at: Optional[datetime] = None
+    resolution_time_minutes: Optional[int] = None
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
 
 
 class AIAdminBriefingSchema(BaseSchema):
+    id: UUID = Field(default_factory=uuid4)
     tenant_id: UUID
     generated_at: datetime = Field(default_factory=datetime.utcnow)
     headline: str
     summary: str
     metrics: dict[str, Any]
     recommended_tasks: list[AIAdminTaskSchema] = Field(default_factory=list)
+
+
+class AIAdminProfileSchema(BaseSchema):
+    id: UUID = Field(default_factory=uuid4)
+    tenant_id: UUID
+    user_id: Optional[UUID] = None
+    communication_style: AICommunicationStyle = AICommunicationStyle.EXECUTIVE
+    priority_focus: AIPriorityFocus = AIPriorityFocus.BALANCED
+    briefing_hour: int = Field(default=7, ge=0, le=23)
+    max_daily_tasks: int = Field(default=5, ge=1, le=20)
+    prefers_whatsapp: bool = True
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)

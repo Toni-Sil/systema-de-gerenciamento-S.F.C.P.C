@@ -11,7 +11,7 @@ from uuid import uuid4
 
 from sqlalchemy import (
     Boolean, Column, Date, DateTime, Enum as SAEnum,
-    ForeignKey, Index, Numeric, String, Text, UniqueConstraint, JSON,
+    Float, ForeignKey, Index, Numeric, String, Text, UniqueConstraint, JSON,
     CheckConstraint,
 )
 from sqlalchemy.dialects.postgresql import UUID
@@ -19,6 +19,9 @@ from sqlalchemy.orm import relationship
 
 from db.session import Base
 from models.entities import (
+    AIAdminFeedbackStatus,
+    AICommunicationStyle,
+    AIPriorityFocus,
     AIAdminTaskStatus,
     AIAdminTaskType,
     MovementType,
@@ -224,6 +227,11 @@ class AIAdminTaskORM(Base):
     due_date = Column(DateTime, nullable=True)
     task_key = Column(String(180), nullable=False)
     context_payload = Column(JSON, nullable=True)
+    feedback_status = Column(SAEnum(AIAdminFeedbackStatus), nullable=True)
+    feedback_note = Column(Text, nullable=True)
+    resolved_by_user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+    resolved_at = Column(DateTime, nullable=True)
+    resolution_time_minutes = Column(Float, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(
         DateTime,
@@ -231,3 +239,42 @@ class AIAdminTaskORM(Base):
         onupdate=datetime.utcnow,
         nullable=False,
     )
+
+
+class AIAdminProfileORM(Base):
+    __tablename__ = "ai_admin_profiles"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "user_id", name="uq_ai_admin_profile_tenant_user"),
+        Index("ix_ai_admin_profiles_tenant", "tenant_id"),
+    )
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
+    tenant_id = Column(UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+    communication_style = Column(SAEnum(AICommunicationStyle), nullable=False, default=AICommunicationStyle.EXECUTIVE)
+    priority_focus = Column(SAEnum(AIPriorityFocus), nullable=False, default=AIPriorityFocus.BALANCED)
+    briefing_hour = Column(Numeric(2, 0, asdecimal=False), nullable=False, default=7)
+    max_daily_tasks = Column(Numeric(2, 0, asdecimal=False), nullable=False, default=5)
+    prefers_whatsapp = Column(Boolean, nullable=False, default=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(
+        DateTime,
+        default=datetime.utcnow,
+        onupdate=datetime.utcnow,
+        nullable=False,
+    )
+
+
+class AIAdminBriefingORM(Base):
+    __tablename__ = "ai_admin_briefings"
+    __table_args__ = (
+        Index("ix_ai_admin_briefings_tenant_generated", "tenant_id", "generated_at"),
+    )
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
+    tenant_id = Column(UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False)
+    headline = Column(String(255), nullable=False)
+    summary = Column(Text, nullable=False)
+    metrics = Column(JSON, nullable=False)
+    recommended_task_keys = Column(JSON, nullable=True)
+    generated_at = Column(DateTime, default=datetime.utcnow, nullable=False)
