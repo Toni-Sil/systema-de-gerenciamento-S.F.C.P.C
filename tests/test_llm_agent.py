@@ -111,6 +111,54 @@ async def test_agent_returns_inventory_status(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_agent_generates_admin_plan(monkeypatch):
+    tenant_id = uuid4()
+    mocked_admin = AsyncMock(
+        return_value=json.dumps(
+            {
+                "status": "success",
+                "data": {
+                    "total_products": 12,
+                    "low_stock_count": 2,
+                    "critical_items": [
+                        {
+                            "code": "TEC-001",
+                            "total_balance": 3.0,
+                            "min_stock": 10.0,
+                            "is_low_stock": True,
+                        }
+                    ],
+                    "recommended_actions": [
+                        {
+                            "type": "replenish",
+                            "priority": "high",
+                            "product_code": "TEC-001",
+                            "deficit": 7.0,
+                            "message": "Repor TEC-001 para cobrir déficit de 7.0 e retornar ao estoque mínimo.",
+                        }
+                    ],
+                },
+            }
+        )
+    )
+
+    monkeypatch.setattr("llm.agent.LLMTools.get_admin_overview", mocked_admin)
+
+    response = await AgentOrchestrator.process_message(
+        tenant_id,
+        "Atue como administrador ativo e me entregue um plano de ação",
+    )
+    payload = json.loads(response)
+
+    assert payload["action"] == "AdminPlan"
+    assert payload["status"] == "success"
+    assert payload["data"]["low_stock_count"] == 2
+    assert payload["data"]["recommended_actions"][0]["product_code"] == "TEC-001"
+    assert "estoque abaixo do mínimo" in payload["motivo"]
+    mocked_admin.assert_awaited_once_with(tenant_id=tenant_id)
+
+
+@pytest.mark.asyncio
 async def test_agent_rejects_unknown_intent():
     payload = json.loads(
         await AgentOrchestrator.process_message(uuid4(), "Me conte uma piada")

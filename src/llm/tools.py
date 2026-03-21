@@ -65,3 +65,14 @@ class LLMTools:
             return json.dumps({"status": "success", "data": summary})
         except Exception as e:
             return json.dumps({"status": "error", "message": str(e)})
+
+    @staticmethod
+    async def get_admin_overview(tenant_id: UUID) -> str:
+        """
+        Retorna um quadro de ação para a IA operar como administrador ativo.
+        """
+        try:
+            overview = await GoldLayerService.get_admin_overview(tenant_id)
+            return json.dumps({"status": "success", "data": overview})
+        except Exception as e:
+            return json.dumps({"status": "error", "message": str(e)})

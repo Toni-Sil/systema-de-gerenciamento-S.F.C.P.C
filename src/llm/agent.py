@@ -96,6 +96,35 @@ class AgentOrchestrator:
                     "status": "success"
                 }))
             
+        # Simula extração de intenção: Administração ativa / plano executivo
+        elif (
+            "administrador" in msg_lower
+            or "administra" in msg_lower
+            or "prioridade" in msg_lower
+            or "plano de ação" in msg_lower
+            or "plano de acao" in msg_lower
+        ):
+            tool_resp = await LLMTools.get_admin_overview(tenant_id=tenant_id)
+            resp_dict = json.loads(tool_resp)
+
+            if resp_dict["status"] != "success":
+                return parse_and_govern(json.dumps({
+                    "action": "AdminPlan",
+                    "status": "failed",
+                    "motivo": resp_dict.get("message", "Falha ao montar o plano administrativo."),
+                }))
+
+            overview = resp_dict["data"]
+            return parse_and_govern(json.dumps({
+                "action": "AdminPlan",
+                "status": "success",
+                "data": overview,
+                "motivo": (
+                    f"Plano executivo gerado com {overview.get('low_stock_count', 0)} "
+                    "item(ns) com estoque abaixo do mínimo."
+                ),
+            }))
+
         # Simula extração de intenção: Status do Estoque
         elif "estoque" in msg_lower or "resumo" in msg_lower:
             tool_resp = await LLMTools.get_inventory_status(tenant_id=tenant_id)

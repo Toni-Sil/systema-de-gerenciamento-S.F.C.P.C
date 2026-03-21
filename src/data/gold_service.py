@@ -86,3 +86,46 @@ class GoldLayerService:
             }
             for m in movements
         ]
+
+    @staticmethod
+    async def get_admin_overview(tenant_id: UUID) -> Dict[str, Any]:
+        """
+        Consolida um quadro executivo para uma IA atuar como administrador ativo.
+        """
+        inventory = await GoldLayerService.get_inventory_summary(tenant_id)
+        low_stock_items = [
+            item for item in inventory
+            if item["is_low_stock"]
+        ]
+
+        low_stock_items.sort(
+            key=lambda item: (
+                item["total_balance"] - item["min_stock"],
+                item["code"],
+            )
+        )
+
+        actions = []
+        for item in low_stock_items[:5]:
+            deficit = round(item["min_stock"] - item["total_balance"], 2)
+            actions.append(
+                {
+                    "type": "replenish",
+                    "priority": "high" if deficit > 0 else "medium",
+                    "product_code": item["code"],
+                    "current_balance": item["total_balance"],
+                    "min_stock": item["min_stock"],
+                    "deficit": deficit,
+                    "message": (
+                        f"Repor {item['code']} para cobrir déficit de {deficit} "
+                        f"e retornar ao estoque mínimo."
+                    ),
+                }
+            )
+
+        return {
+            "total_products": len(inventory),
+            "low_stock_count": len(low_stock_items),
+            "critical_items": low_stock_items[:5],
+            "recommended_actions": actions,
+        }
