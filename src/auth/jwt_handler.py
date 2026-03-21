@@ -1,6 +1,6 @@
-import jwt
-import time
 import os
+import time
+from jose import ExpiredSignatureError, JWTError, jwt
 from uuid import UUID
 from fastapi import HTTPException, Security
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
@@ -45,10 +45,10 @@ def verify_jwt_token(
         token = credentials.credentials
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         return payload
-    except jwt.ExpiredSignatureError:
+    except ExpiredSignatureError:
         logger.warning("JWT token expired")
         raise HTTPException(status_code=401, detail="Token has expired")
-    except jwt.InvalidTokenError as exc:
+    except JWTError as exc:
         logger.warning(f"Invalid JWT token: {exc}")
         raise HTTPException(status_code=401, detail="Invalid token")
 
