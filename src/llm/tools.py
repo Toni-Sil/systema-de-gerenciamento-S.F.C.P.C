@@ -2,7 +2,11 @@ from typing import Optional, Dict, Any
 from uuid import UUID
 import json
 from models.entities import MovementType
-from services.stock_service import StockService, product_repo
+from sqlalchemy import select
+
+from db.orm_models import ProductORM
+from db.session import get_session
+from services.stock_service import StockService
 from data.gold_service import GoldLayerService
 
 class LLMTools:
@@ -14,35 +18,40 @@ class LLMTools:
         Registra uma movimentação de estoque (entrada ou saída).
         """
         try:
-            # Buscar produto pelo código
-            products = await product_repo.get_all()
-            target_product = next((p for p in products if p.code == product_code), None)
-            
-            if not target_product:
-                return json.dumps({"status": "error", "message": f"Produto com código {product_code} não encontrado no sistema."})
-            
-            # Registrar
-            mov_type = MovementType.ENTRY if type.upper() == "ENTRY" else MovementType.EXIT
-            from models.entities import MovementSchema
-            import uuid
-            
-            movement = MovementSchema(
-                id=uuid.uuid4(),
-                tenant_id=tenant_id,
-                product_id=target_product.id,
-                type=mov_type,
-                quantity=quantity,
-                location_id=None,
-                batch_id=None
-            )
+            async with get_session() as session:
+                product_result = await session.execute(
+                    select(ProductORM).where(
+                        ProductORM.tenant_id == tenant_id,
+                        ProductORM.code == product_code,
+                        ProductORM.is_active == True,
+                    )
+                )
+                target_product = product_result.scalar_one_or_none()
 
-            
-            balance_obj = await StockService.process_movement(movement)
-            return json.dumps({
-                "status": "success", 
-                "message": "Movimentação registrada com sucesso.",
-                "new_balance": balance_obj.balance
-            })
+                if not target_product:
+                    return json.dumps({"status": "error", "message": f"Produto com código {product_code} não encontrado no sistema."})
+
+                # Registrar
+                mov_type = MovementType.ENTRY if type.upper() == "ENTRY" else MovementType.EXIT
+                from models.entities import MovementSchema
+                import uuid
+
+                movement = MovementSchema(
+                    id=uuid.uuid4(),
+                    tenant_id=tenant_id,
+                    product_id=target_product.id,
+                    type=mov_type,
+                    quantity=quantity,
+                    location_id=None,
+                    batch_id=None
+                )
+
+                balance_obj = await StockService.process_movement(movement, session)
+                return json.dumps({
+                    "status": "success",
+                    "message": "Movimentação registrada com sucesso.",
+                    "new_balance": balance_obj.balance
+                })
         except Exception as e:
             return json.dumps({"status": "error", "message": str(e)})
 

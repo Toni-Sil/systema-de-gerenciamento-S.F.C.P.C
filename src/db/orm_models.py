@@ -11,7 +11,7 @@ from uuid import uuid4
 
 from sqlalchemy import (
     Boolean, Column, Date, DateTime, Enum as SAEnum,
-    Float, ForeignKey, Index, String, Text, UniqueConstraint, JSON,
+    ForeignKey, Index, Numeric, String, Text, UniqueConstraint, JSON,
     CheckConstraint,
 )
 from sqlalchemy.dialects.postgresql import UUID
@@ -83,7 +83,7 @@ class ProductORM(Base):
     code = Column(String(40), nullable=False)
     description = Column(String(255), nullable=False)
     unit = Column(String(20), nullable=False)
-    min_stock = Column(Float, default=0.0, nullable=False)
+    min_stock = Column(Numeric(12, 2, asdecimal=False), default=0.0, nullable=False)
     category = Column(SAEnum(ProductCategory), nullable=True)
     attributes = Column(JSON, nullable=True)  # Flexible: FabricAttributes, FoamAttributes, etc.
     is_active = Column(Boolean, default=True, nullable=False)
@@ -145,7 +145,7 @@ class StockBalanceORM(Base):
     product_id = Column(UUID(as_uuid=True), ForeignKey("products.id", ondelete="CASCADE"), nullable=False)
     batch_id = Column(UUID(as_uuid=True), ForeignKey("batches.id"), nullable=True)
     location_id = Column(UUID(as_uuid=True), ForeignKey("locations.id"), nullable=True)
-    balance = Column(Float, default=0.0, nullable=False)
+    balance = Column(Numeric(12, 2, asdecimal=False), default=0.0, nullable=False)
 
     product = relationship("ProductORM", back_populates="stock_balances", lazy="noload")
 
@@ -166,7 +166,7 @@ class StockMovementORM(Base):
     batch_id = Column(UUID(as_uuid=True), ForeignKey("batches.id"), nullable=True)
     location_id = Column(UUID(as_uuid=True), ForeignKey("locations.id"), nullable=True)
     type = Column(SAEnum(MovementType), nullable=False)
-    quantity = Column(Float, nullable=False)
+    quantity = Column(Numeric(12, 2, asdecimal=False), nullable=False)
     reference_doc = Column(String(120), nullable=True)
     notes = Column(Text, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
@@ -189,7 +189,7 @@ class ExpenseORM(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
     tenant_id = Column(UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False)
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
-    value = Column(Float, nullable=False)
+    value = Column(Numeric(12, 2, asdecimal=False), nullable=False)
     category = Column(SAEnum(ExpenseCategory), nullable=False)
     supplier = Column(String(120), nullable=True)
     description = Column(Text, nullable=True)
