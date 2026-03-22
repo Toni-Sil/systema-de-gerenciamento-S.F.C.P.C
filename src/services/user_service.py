@@ -6,6 +6,7 @@ Responsibilities:
 - Enforce username/email uniqueness per tenant
 """
 import logging
+from sqlalchemy import or_
 from uuid import UUID
 
 from fastapi import HTTPException
@@ -69,22 +70,58 @@ class UserService:
 
     @staticmethod
     async def authenticate(
-        tenant_id: UUID,
-        username: str,
+        tenant_id: UUID | None,
+        username: str | None,
         plain_password: str,
         session: AsyncSession,
+        email: str | None = None,
     ) -> dict:
         """Validates credentials and returns a JWT access token.
-        Raises 401 on any failure — never reveals whether username or password was wrong.
+
+        Supports the legacy username+tenant login flow and the current frontend
+        email/password flow. When tenant_id is omitted we only authenticate via
+        e-mail if there is a single active match; otherwise the caller must
+        provide tenant context explicitly.
         """
-        result = await session.execute(
-            select(UserORM).where(
-                UserORM.tenant_id == tenant_id,
-                UserORM.username == username,
-                UserORM.is_active == True,
+        identity = (username or email or "").strip().lower()
+        if not identity:
+            raise HTTPException(status_code=400, detail="username or email is required")
+
+        if tenant_id is not None:
+            result = await session.execute(
+                select(UserORM).where(
+                    UserORM.tenant_id == tenant_id,
+                    UserORM.is_active == True,
+                    or_(
+                        UserORM.username == identity,
+                        UserORM.email == identity,
+                    ),
+                )
             )
-        )
-        user = result.scalar_one_or_none()
+            user = result.scalar_one_or_none()
+        elif email:
+            result = await session.execute(
+                select(UserORM).where(
+                    UserORM.email == email.lower(),
+                    UserORM.is_active == True,
+                )
+            )
+            matches = result.scalars().all()
+            if len(matches) > 1:
+                logger.warning("auth_failed_multiple_tenants email=%s", email.lower())
+                raise HTTPException(
+                    status_code=400,
+                    detail="Multiple tenants found for this email. Provide tenant_id to continue.",
+                )
+            user = matches[0] if matches else None
+        else:
+            raise HTTPException(
+                status_code=400,
+                detail="tenant_id is required when authenticating with username",
+            )
+
+        auth_label = email.lower() if email else identity
+        tenant_label = tenant_id or (user.tenant_id if user else None)
 
         # Constant-time comparison: always verify even if user not found (prevents timing attacks)
         dummy_hash = "$2b$12$invalidhashfortimingprotection000000000000000000000"
@@ -92,7 +129,7 @@ class UserService:
         password_ok = verify_password(plain_password, stored_hash)
 
         if not user or not password_ok:
-            logger.warning(f"auth_failed tenant={tenant_id} username={username}")
+            logger.warning("auth_failed tenant=%s identity=%s", tenant_label, auth_label)
             raise HTTPException(status_code=401, detail="Invalid credentials")
 
         token = create_jwt_token(
@@ -100,5 +137,5 @@ class UserService:
             user_id=str(user.id),
             role=user.role.value,
         )
-        logger.info(f"auth_success tenant={tenant_id} user={user.id}")
+        logger.info("auth_success tenant=%s user=%s", user.tenant_id, user.id)
         return {"access_token": token, "token_type": "bearer"}

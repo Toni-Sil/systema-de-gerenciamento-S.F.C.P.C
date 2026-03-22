@@ -32,8 +32,15 @@ class LLMTools:
                 if not target_product:
                     return json.dumps({"status": "error", "message": f"Produto com código {product_code} não encontrado no sistema."})
 
+                movement_type = type.upper()
+                if movement_type not in {MovementType.ENTRY.value, MovementType.EXIT.value}:
+                    return json.dumps({
+                        "status": "error",
+                        "message": f"Tipo de movimentação inválido: {type}",
+                    })
+
                 # Registrar
-                mov_type = MovementType.ENTRY if type.upper() == "ENTRY" else MovementType.EXIT
+                mov_type = MovementType(movement_type)
                 from models.entities import MovementSchema
                 import uuid
 

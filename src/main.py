@@ -228,9 +228,13 @@ class AIAdminTaskFeedbackRequest(BaseModel):
 
 @v1_router.post("/agent/chat", tags=["Agent"])
 async def chat_with_agent(chat_input: ChatMessage):
+    tenant_id = get_tenant_id()
+    if not tenant_id:
+        raise HTTPException(status_code=403, detail="Tenant context missing")
+
     from llm.agent import AgentOrchestrator
     reply = await AgentOrchestrator.process_message(
-        tenant_id=get_tenant_id(),
+        tenant_id=tenant_id,
         message=chat_input.message,
         context=chat_input.context,
     )
@@ -362,8 +366,9 @@ app.include_router(v1_router)
 # ---------------------------------------------------------------------------
 
 class LoginRequest(BaseModel):
-    tenant_id: UUID
-    username: str
+    tenant_id: UUID | None = None
+    username: str | None = None
+    email: str | None = None
     password: str
 
 
@@ -379,6 +384,7 @@ async def login_v1(request: LoginRequest):
         return await UserService.authenticate(
             tenant_id=request.tenant_id,
             username=request.username,
+            email=request.email,
             plain_password=request.password,
             session=session,
         )
