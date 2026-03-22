@@ -193,3 +193,47 @@ async def test_record_task_feedback_marks_task_as_executed():
     assert updated is not None
     assert updated.status == AIAdminTaskStatus.EXECUTED
     assert updated.feedback_note == "Executado após briefing."
+
+
+@pytest.mark.asyncio
+async def test_sync_admin_tasks_maps_non_replenishment_types(monkeypatch):
+    tenant_id = uuid4()
+    session = AsyncMock()
+    session.add = Mock()
+    session.execute.side_effect = [_FakeResult([]), _FakeResult([])]
+
+    async def fake_flush():
+        added = session.add.call_args.args[0]
+        added.id = uuid4()
+        added.created_at = datetime.utcnow()
+        added.updated_at = datetime.utcnow()
+        return None
+
+    session.flush.side_effect = fake_flush
+
+    monkeypatch.setattr(
+        "services.ai_admin_service.GoldLayerService.get_admin_overview",
+        AsyncMock(
+            return_value={
+                "headline": "1 item em auditoria",
+                "total_products": 12,
+                "low_stock_count": 0,
+                "critical_items": [],
+                "recommended_actions": [
+                    {
+                        "type": "audit",
+                        "priority": "medium",
+                        "priority_score": 71.0,
+                        "product_code": "TEC-002",
+                        "message": "Revisar saída fora do padrão.",
+                    }
+                ],
+            }
+        ),
+    )
+
+    tasks = await AIAdminService.sync_admin_tasks(tenant_id, session)
+
+    assert len(tasks) == 1
+    assert tasks[0].task_type == AIAdminTaskType.AUDIT
+    assert tasks[0].title == "Auditar movimentação de TEC-002"

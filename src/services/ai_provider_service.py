@@ -42,12 +42,15 @@ def _get_encryption_secret() -> str:
     )
 
 
-def _build_fernet() -> Fernet:
-    digest = hashlib.sha256(_get_encryption_secret().encode("utf-8")).digest()
-    return Fernet(base64.urlsafe_b64encode(digest))
+_FERNET: Fernet | None = None
 
 
-_FERNET = _build_fernet()
+def _get_fernet() -> Fernet:
+    global _FERNET
+    if _FERNET is None:
+        digest = hashlib.sha256(_get_encryption_secret().encode("utf-8")).digest()
+        _FERNET = Fernet(base64.urlsafe_b64encode(digest))
+    return _FERNET
 
 
 class AIProviderService:
@@ -55,13 +58,13 @@ class AIProviderService:
     def _encrypt_api_key(api_key: str | None) -> str | None:
         if not api_key:
             return None
-        return _FERNET.encrypt(api_key.strip().encode("utf-8")).decode("utf-8")
+        return _get_fernet().encrypt(api_key.strip().encode("utf-8")).decode("utf-8")
 
     @staticmethod
     def _decrypt_api_key(api_key_encrypted: str | None) -> str | None:
         if not api_key_encrypted:
             return None
-        return _FERNET.decrypt(api_key_encrypted.encode("utf-8")).decode("utf-8")
+        return _get_fernet().decrypt(api_key_encrypted.encode("utf-8")).decode("utf-8")
 
     @staticmethod
     def _mask_api_key(api_key: str | None) -> str | None:

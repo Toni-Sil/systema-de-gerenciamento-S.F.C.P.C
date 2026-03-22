@@ -25,6 +25,48 @@ logger = logging.getLogger(__name__)
 class AIAdminService:
     """Camada de trabalho administrativo proativo da IA."""
 
+    _TASK_TYPE_MAP = {
+        "replenish": AIAdminTaskType.REPLENISHMENT,
+        "audit": AIAdminTaskType.AUDIT,
+        "follow_up": AIAdminTaskType.FOLLOW_UP,
+        "briefing": AIAdminTaskType.BRIEFING,
+    }
+
+    @staticmethod
+    def _build_task_key(action: dict) -> str:
+        product_code = action.get("product_code") or action.get("entity_key") or "general"
+        return f"{action.get('type', 'follow_up')}:{product_code}"
+
+    @staticmethod
+    def _map_task_type(action: dict) -> AIAdminTaskType:
+        return AIAdminService._TASK_TYPE_MAP.get(
+            action.get("type", "").lower(),
+            AIAdminTaskType.FOLLOW_UP,
+        )
+
+    @staticmethod
+    def _build_task_title(action: dict, task_type: AIAdminTaskType) -> str:
+        product_code = action.get("product_code")
+        if task_type == AIAdminTaskType.REPLENISHMENT and product_code:
+            return f"Repor {product_code}"
+        if task_type == AIAdminTaskType.AUDIT and product_code:
+            return f"Auditar movimentação de {product_code}"
+        if task_type == AIAdminTaskType.BRIEFING:
+            return action.get("title") or "Revisar briefing administrativo"
+        if task_type == AIAdminTaskType.FOLLOW_UP and product_code:
+            return f"Acompanhar ação em {product_code}"
+        return action.get("title") or "Acompanhar recomendação administrativa"
+
+    @staticmethod
+    def _build_task_description(action: dict, task_type: AIAdminTaskType) -> str:
+        if action.get("message"):
+            return action["message"]
+        if task_type == AIAdminTaskType.AUDIT:
+            return "Revisar ocorrência operacional sinalizada pela IA."
+        if task_type == AIAdminTaskType.BRIEFING:
+            return "Validar o resumo diário gerado pela IA."
+        return "Executar acompanhamento administrativo recomendado pela IA."
+
     @staticmethod
     async def get_or_create_profile(
         tenant_id: UUID,
@@ -110,22 +152,25 @@ class AIAdminService:
         }[profile.priority_focus]
 
         for action in recommended_actions:
-            task_key = f"{action['type']}:{action['product_code']}"
+            task_type = AIAdminService._map_task_type(action)
+            task_key = AIAdminService._build_task_key(action)
             priority_score = float(
                 min(100.0, max(0.0, action.get("priority_score", 50.0) + focus_bonus))
             )
             due_date = now + timedelta(
                 hours=4 if action.get("priority") == "high" else 24
             )
+            title = AIAdminService._build_task_title(action, task_type)
+            description = AIAdminService._build_task_description(action, task_type)
 
             task = existing_by_key.get(task_key)
             if task is None:
                 task = AIAdminTaskORM(
                     tenant_id=tenant_id,
-                    task_type=AIAdminTaskType.REPLENISHMENT,
+                    task_type=task_type,
                     status=AIAdminTaskStatus.SUGGESTED,
-                    title=f"Repor {action['product_code']}",
-                    description=action["message"],
+                    title=title,
+                    description=description,
                     priority_score=priority_score,
                     due_date=due_date,
                     task_key=task_key,
@@ -134,8 +179,9 @@ class AIAdminService:
                 session.add(task)
                 await session.flush()
             else:
-                task.title = f"Repor {action['product_code']}"
-                task.description = action["message"]
+                task.task_type = task_type
+                task.title = title
+                task.description = description
                 task.priority_score = priority_score
                 task.due_date = due_date
                 task.context_payload = action
