@@ -18,6 +18,11 @@ logger = logging.getLogger(__name__)
 
 _COMPANY_NAME = os.getenv("COMPANY_NAME", "S.F.C.P.C")
 _TZ = "America/Sao_Paulo"
+_AI_ADMIN_TENANT_IDS = [
+    tenant_id.strip()
+    for tenant_id in os.getenv("AI_ADMIN_TENANT_IDS", "").split(",")
+    if tenant_id.strip()
+]
 
 
 class SchedulerService:
@@ -49,8 +54,15 @@ class SchedulerService:
             replace_existing=True,
         )
 
+        cls._scheduler.add_job(
+            cls._generate_daily_admin_briefing,
+            CronTrigger(hour=6, minute=45, timezone=_TZ),
+            id="daily_admin_briefing",
+            replace_existing=True,
+        )
+
         cls._scheduler.start()
-        logger.info("[SchedulerService] Iniciado. Jobs: weekly_report + daily_due_alert")
+        logger.info("[SchedulerService] Iniciado. Jobs: weekly_report + daily_due_alert + daily_admin_briefing")
 
     @classmethod
     def stop(cls) -> None:
@@ -160,3 +172,35 @@ class SchedulerService:
 
         except Exception as exc:
             logger.error("[SchedulerService] Falha no alerta de vencimentos: %s", exc)
+
+    @staticmethod
+    async def _generate_daily_admin_briefing() -> None:
+        """Gera a fila de trabalho administrativa diária da IA."""
+        from uuid import UUID
+
+        from db.session import get_session
+        from services.ai_admin_service import AIAdminService
+
+        if not _AI_ADMIN_TENANT_IDS:
+            logger.info("[SchedulerService] Nenhum tenant configurado para daily_admin_briefing.")
+            return
+
+        for tenant_id_str in _AI_ADMIN_TENANT_IDS:
+            try:
+                tenant_id = UUID(tenant_id_str)
+                async with get_session() as session:
+                    briefing = await AIAdminService.generate_daily_briefing(tenant_id, session)
+                logger.info(
+                    "[SchedulerService] Briefing administrativo gerado.",
+                    extra={
+                        "tenant_id": tenant_id_str,
+                        "headline": briefing.headline,
+                        "task_count": len(briefing.recommended_tasks),
+                    },
+                )
+            except Exception as exc:
+                logger.error(
+                    "[SchedulerService] Falha ao gerar briefing administrativo do tenant %s: %s",
+                    tenant_id_str,
+                    exc,
+                )

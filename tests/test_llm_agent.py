@@ -1,75 +1,229 @@
-import asyncio
-from uuid import uuid4
-import sys
-import os
+"""Focused regression tests for the integrated AI orchestrator."""
 import json
+import os
+import sys
+from pathlib import Path
+from uuid import uuid4
+from unittest.mock import AsyncMock
 
-# Add src to path
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../src')))
+import pytest
+
+
+ROOT = Path(__file__).resolve().parents[1]
+SRC = ROOT / "src"
+if str(SRC) not in sys.path:
+    sys.path.insert(0, str(SRC))
+
+os.environ.setdefault("JWT_SECRET_KEY", "test-secret-key-for-pytest-only")
+os.environ.setdefault("DATABASE_URL", "postgresql+asyncpg://user:pass@localhost/testdb")
 
 from llm.agent import AgentOrchestrator
-from models.entities import ProductSchema, StockBalanceSchema
-from services.stock_service import product_repo, balance_repo
-from auth.tenant_context import set_tenant_id
 
-async def verify_llm_agent():
+
+@pytest.mark.asyncio
+async def test_agent_processes_entry_message(monkeypatch):
     tenant_id = uuid4()
-    set_tenant_id(tenant_id)
-    print(f"\n--- Iniciando Teste do Agente LLM (Tenant: {tenant_id}) ---")
-    
-    # Setup mock product (TEST-001 is hardcoded in agent mock for this phase)
-    p_id = uuid4()
-    await product_repo.create(ProductSchema(id=p_id, tenant_id=tenant_id, code="TEST-001", description="Teste LLM", unit="UN"))
-    await balance_repo.create(StockBalanceSchema(tenant_id=tenant_id, product_id=p_id, balance=50.0))
-    
-    # Cenário 1: Entrada via Linguagem Natural
-    msg = "Acabei de dar entrada em 15 caixas do produto"
-    print(f"\n[Usuário]: {msg}")
-    resposta = await AgentOrchestrator.process_message(tenant_id, msg)
-    print(f"[Agente]: {resposta}")
-    resp_obj = json.loads(resposta)
-    assert resp_obj["action"] == "Entry"
-    assert resp_obj["new_balance"] == 65.0 # 50 + 15
-    
-    # Cenário 2: Saída
-    msg2 = "Vendi 5 peças, dê saída"
-    print(f"\n[Usuário]: {msg2}")
-    resposta = await AgentOrchestrator.process_message(tenant_id, msg2)
-    print(f"[Agente]: {resposta}")
-    resp_obj = json.loads(resposta)
-    assert resp_obj["action"] == "Exit"
-    assert resp_obj["new_balance"] == 60.0 # 65 - 5
-    
-    # Cenário 3: Resumo
-    msg3 = "Me mostre o status do estoque"
-    print(f"\n[Usuário]: {msg3}")
-    resposta = await AgentOrchestrator.process_message(tenant_id, msg3)
-    print(f"[Agente]: {resposta}")
-    resp_obj = json.loads(resposta)
-    assert resp_obj["action"] == "InventoryStatus"
-    assert len(resp_obj["data"]) == 1
-    
-    # Cenário 4: Não reconhecido
-    msg4 = "Me conte uma piada"
-    print(f"\n[Usuário]: {msg4}")
-    resposta = await AgentOrchestrator.process_message(tenant_id, msg4)
-    print(f"[Agente]: {resposta}")
-    resp_obj = json.loads(resposta)
-    assert resp_obj["action"] == "Unknown"
-    assert resp_obj["status"] == "failed"
-    assert "logística" in resp_obj["motivo"]
-    
-    # Cenário 5: Governança - Volume Anômalo (Human-in-the-loop)
-    msg5 = "Vendi 1500 peças, dê saída"
-    print(f"\n[Usuário]: {msg5}")
-    resposta = await AgentOrchestrator.process_message(tenant_id, msg5)
-    print(f"[Agente]: {resposta}")
-    resp_obj = json.loads(resposta)
-    assert resp_obj["action"] == "Exit"
-    assert resp_obj["status"] == "needs_approval"
-    assert "movimentação atípica" in resp_obj["motivo"].lower()
-    
-    print("\n--- Todos os testes do Agente LLM PASSERAM! ---")
+    mocked_record = AsyncMock(
+        return_value=json.dumps(
+            {
+                "status": "success",
+                "message": "Movimentação registrada com sucesso.",
+                "new_balance": 65.0,
+            }
+        )
+    )
 
-if __name__ == "__main__":
-    asyncio.run(verify_llm_agent())
+    monkeypatch.setattr(
+        "llm.agent.LLMTools.record_movement",
+        mocked_record,
+    )
+
+    response = await AgentOrchestrator.process_message(
+        tenant_id,
+        "Acabei de dar entrada em 15 caixas do produto",
+    )
+    payload = json.loads(response)
+
+    assert payload["action"] == "Entry"
+    assert payload["status"] == "success"
+    assert payload["params"]["quantity"] == 15.0
+    assert payload["new_balance"] == 65.0
+    mocked_record.assert_awaited_once_with(
+        tenant_id=tenant_id,
+        product_code="TEST-001",
+        type="ENTRY",
+        quantity=15.0,
+    )
+
+
+@pytest.mark.asyncio
+async def test_agent_flags_large_exit_for_human_approval(monkeypatch):
+    tenant_id = uuid4()
+
+    monkeypatch.setattr(
+        "llm.agent.LLMTools.record_movement",
+        AsyncMock(
+            return_value=json.dumps(
+                {
+                    "status": "success",
+                    "message": "Movimentação registrada com sucesso.",
+                    "new_balance": 10.0,
+                }
+            )
+        ),
+    )
+
+    response = await AgentOrchestrator.process_message(
+        tenant_id,
+        "Vendi 1500 peças, dê saída",
+    )
+    payload = json.loads(response)
+
+    assert payload["action"] == "Exit"
+    assert payload["status"] == "needs_approval"
+    assert "movimentação atípica" in payload["motivo"].lower()
+
+
+@pytest.mark.asyncio
+async def test_agent_returns_inventory_status(monkeypatch):
+    tenant_id = uuid4()
+    mocked_inventory = AsyncMock(
+        return_value=json.dumps(
+            {
+                "status": "success",
+                "data": [{"code": "TEST-001", "balance": 12.5}],
+            }
+        )
+    )
+
+    monkeypatch.setattr("llm.agent.LLMTools.get_inventory_status", mocked_inventory)
+
+    response = await AgentOrchestrator.process_message(
+        tenant_id,
+        "Me mostre o status do estoque",
+    )
+    payload = json.loads(response)
+
+    assert payload["action"] == "InventoryStatus"
+    assert payload["status"] == "success"
+    assert payload["data"] == [{"code": "TEST-001", "balance": 12.5}]
+    mocked_inventory.assert_awaited_once_with(tenant_id=tenant_id)
+
+
+@pytest.mark.asyncio
+async def test_agent_generates_admin_plan(monkeypatch):
+    tenant_id = uuid4()
+    mocked_admin = AsyncMock(
+        return_value=json.dumps(
+            {
+                "status": "success",
+                "data": {
+                    "headline": "2 itens críticos",
+                    "summary": "A IA consolidou o quadro administrativo do dia.",
+                    "metrics": {
+                        "total_products": 12,
+                        "low_stock_count": 2,
+                        "urgent_task_count": 1,
+                    },
+                    "recommended_actions": [
+                        {
+                            "type": "replenish",
+                            "priority": "high",
+                            "product_code": "TEC-001",
+                            "deficit": 7.0,
+                            "message": "Repor TEC-001 para cobrir déficit de 7.0 e retornar ao estoque mínimo.",
+                        }
+                    ],
+                },
+            }
+        )
+    )
+
+    monkeypatch.setattr("llm.agent.LLMTools.get_daily_admin_briefing", mocked_admin)
+
+    response = await AgentOrchestrator.process_message(
+        tenant_id,
+        "Atue como administrador ativo e me entregue um plano de ação",
+    )
+    payload = json.loads(response)
+
+    assert payload["action"] == "AdminPlan"
+    assert payload["status"] == "success"
+    assert payload["data"]["metrics"]["low_stock_count"] == 2
+    assert payload["data"]["recommended_actions"][0]["product_code"] == "TEC-001"
+    assert "estoque abaixo do mínimo" in payload["motivo"]
+    mocked_admin.assert_awaited_once_with(tenant_id=tenant_id)
+
+
+@pytest.mark.asyncio
+async def test_agent_rejects_unknown_intent():
+    payload = json.loads(
+        await AgentOrchestrator.process_message(uuid4(), "Me conte uma piada")
+    )
+
+    assert payload["action"] == "Unknown"
+    assert payload["status"] == "failed"
+    assert "logística" in payload["motivo"]
+
+
+@pytest.mark.asyncio
+async def test_agent_extracts_product_code_from_message_and_context(monkeypatch):
+    tenant_id = uuid4()
+    mocked_record = AsyncMock(
+        return_value=json.dumps(
+            {
+                "status": "success",
+                "message": "Movimentação registrada com sucesso.",
+                "new_balance": 22.0,
+            }
+        )
+    )
+
+    monkeypatch.setattr("llm.agent.LLMTools.record_movement", mocked_record)
+
+    payload = json.loads(
+        await AgentOrchestrator.process_message(
+            tenant_id,
+            "Dar entrada em 2 unidades do produto tec-009",
+        )
+    )
+
+    assert payload["params"]["product"] == "TEC-009"
+    mocked_record.assert_awaited_once_with(
+        tenant_id=tenant_id,
+        product_code="TEC-009",
+        type="ENTRY",
+        quantity=2.0,
+    )
+
+
+@pytest.mark.asyncio
+async def test_agent_uses_context_to_extract_product_code(monkeypatch):
+    tenant_id = uuid4()
+    mocked_record = AsyncMock(
+        return_value=json.dumps(
+            {
+                "status": "success",
+                "message": "Movimentação registrada com sucesso.",
+                "new_balance": 7.0,
+            }
+        )
+    )
+
+    monkeypatch.setattr("llm.agent.LLMTools.record_movement", mocked_record)
+
+    payload = json.loads(
+        await AgentOrchestrator.process_message(
+            tenant_id,
+            "Registrar saída de 3 unidades",
+            context="Item crítico atual: TEC-777",
+        )
+    )
+
+    assert payload["params"]["product"] == "TEC-777"
+    mocked_record.assert_awaited_once_with(
+        tenant_id=tenant_id,
+        product_code="TEC-777",
+        type="EXIT",
+        quantity=3.0,
+    )

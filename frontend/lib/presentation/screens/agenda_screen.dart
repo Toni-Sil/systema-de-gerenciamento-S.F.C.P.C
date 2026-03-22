@@ -756,39 +756,56 @@ class _AgendaScreenState extends State<AgendaScreen>
             if (event.isVoiceCreated)
               _detailRow(Icons.mic, 'Criado por voz', textLow, textMed),
             const SizedBox(height: 20),
-            Row(
-              children: [
-                if (event.status != EventStatus.concluido) ...[
-                  Expanded(
-                    child: ElevatedButton.icon(
-                      onPressed: () {
-                        agenda.markCompleted(event.id);
-                        Navigator.pop(context);
-                      },
-                      icon: const Icon(Icons.check),
-                      label: const Text('Concluído'),
-                      style: ElevatedButton.styleFrom(
-                          backgroundColor: AppColors.neonGreen,
-                          foregroundColor: Colors.white),
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                ],
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: () {
-                      agenda.deleteEvent(event.id);
-                      Navigator.pop(context);
-                    },
-                    icon: const Icon(Icons.delete_outline,
-                        color: AppColors.neonRed),
-                    label: const Text('Excluir',
-                        style: TextStyle(color: AppColors.neonRed)),
-                    style: OutlinedButton.styleFrom(
-                        side: const BorderSide(color: AppColors.neonRed)),
-                  ),
-                ),
-              ],
+            LayoutBuilder(
+              builder: (context, constraints) {
+                final compact = constraints.maxWidth < 360;
+                final completeButton = ElevatedButton.icon(
+                  onPressed: () {
+                    agenda.markCompleted(event.id);
+                    Navigator.pop(context);
+                  },
+                  icon: const Icon(Icons.check),
+                  label: const Text('Concluído'),
+                  style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.neonGreen,
+                      foregroundColor: Colors.white),
+                );
+                final deleteButton = OutlinedButton.icon(
+                  onPressed: () {
+                    agenda.deleteEvent(event.id);
+                    Navigator.pop(context);
+                  },
+                  icon: const Icon(Icons.delete_outline,
+                      color: AppColors.neonRed),
+                  label: const Text('Excluir',
+                      style: TextStyle(color: AppColors.neonRed)),
+                  style: OutlinedButton.styleFrom(
+                      side: const BorderSide(color: AppColors.neonRed)),
+                );
+
+                if (compact) {
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      if (event.status != EventStatus.concluido) ...[
+                        completeButton,
+                        const SizedBox(height: 10),
+                      ],
+                      deleteButton,
+                    ],
+                  );
+                }
+
+                return Row(
+                  children: [
+                    if (event.status != EventStatus.concluido) ...[
+                      Expanded(child: completeButton),
+                      const SizedBox(width: 10),
+                    ],
+                    Expanded(child: deleteButton),
+                  ],
+                );
+              },
             ),
           ],
         ),

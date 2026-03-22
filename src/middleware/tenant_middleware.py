@@ -1,14 +1,26 @@
 import logging
 import uuid
+
 from fastapi import Request
+from jose import JWTError, jwt
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import JSONResponse
+
 from auth.tenant_context import set_tenant_id
 
 logger = logging.getLogger(__name__)
 
 # Routes that are explicitly public (no tenant context required)
-_PUBLIC_PATHS = {"/", "/auth/token", "/docs", "/openapi.json", "/redoc"}
+_PUBLIC_PATHS = {
+    "/",
+    "/auth/token",
+    "/auth/register",
+    "/api/v1/auth/login",
+    "/api/v1/auth/identify",
+    "/docs",
+    "/openapi.json",
+    "/redoc",
+}
 
 
 class TenantMiddleware(BaseHTTPMiddleware):
@@ -44,8 +56,6 @@ class TenantMiddleware(BaseHTTPMiddleware):
         token = auth_header.split(" ", 1)[1]
         try:
             from auth.jwt_handler import SECRET_KEY, ALGORITHM
-            import jwt
-
             payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
             from uuid import UUID
 
@@ -65,7 +75,7 @@ class TenantMiddleware(BaseHTTPMiddleware):
                     "method": request.method,
                 },
             )
-        except Exception as exc:
+        except (JWTError, ValueError) as exc:
             logger.warning(f"Tenant auth failed [{request_id}]: {exc}")
             return JSONResponse(
                 status_code=401,

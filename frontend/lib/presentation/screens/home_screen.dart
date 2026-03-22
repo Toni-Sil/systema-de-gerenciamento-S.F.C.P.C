@@ -80,27 +80,35 @@ class _HomeScreenState extends State<HomeScreen> {
     return Scaffold(
       extendBody: true,
       appBar: AppBar(
+        toolbarHeight: 60,
+        titleSpacing: 12,
         title: Column(
+          mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
               _titles[_currentIndex],
               style: TextStyle(
-                fontSize: 18,
+                fontSize: 17,
+                height: 1.05,
                 fontWeight: FontWeight.bold,
                 color: isDark ? AppColors.textHigh : AppColors.lgTextHigh,
               ),
             ),
+            const SizedBox(height: 2),
             Text(
               subtitles[_currentIndex],
               style: TextStyle(
-                fontSize: 11,
+                fontSize: 10,
+                height: 1.1,
                 color: isDark ? AppColors.textLow : AppColors.lgTextLow,
               ),
+              maxLines: 1,
               overflow: TextOverflow.ellipsis,
             ),
           ],
         ),
+        actionsPadding: const EdgeInsets.only(right: 8),
         actions: [
           // Toggle dark/light
           IconButton(
@@ -114,7 +122,7 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
           if (alertCount > 0)
             Padding(
-              padding: const EdgeInsets.only(right: 4),
+              padding: const EdgeInsets.only(right: 2),
               child: Stack(
                 clipBehavior: Clip.none,
                 children: [
@@ -154,7 +162,7 @@ class _HomeScreenState extends State<HomeScreen> {
           GestureDetector(
             onTap: () => _onTabTap(5),
             child: Padding(
-              padding: const EdgeInsets.only(right: 16),
+              padding: const EdgeInsets.only(right: 8),
               child: CircleAvatar(
                 radius: 18,
                 backgroundImage: NetworkImage(userProvider.profileImageUrl),
@@ -188,12 +196,12 @@ class _HomeScreenState extends State<HomeScreen> {
           const BottomNavigationBarItem(
             icon: Icon(Icons.psychology_outlined),
             activeIcon: Icon(Icons.psychology),
-            label: 'Agente IA',
+            label: 'Agente',
           ),
           const BottomNavigationBarItem(
             icon: Icon(Icons.bar_chart_outlined),
             activeIcon: Icon(Icons.bar_chart),
-            label: 'Indicadores',
+            label: 'Painel',
           ),
           BottomNavigationBarItem(
             icon: alertCount > 0
@@ -206,12 +214,12 @@ class _HomeScreenState extends State<HomeScreen> {
                     label: Text('$alertCount'),
                     child: const Icon(Icons.inventory_2))
                 : const Icon(Icons.inventory_2),
-            label: 'Operacional',
+            label: 'Estoque',
           ),
           const BottomNavigationBarItem(
             icon: Icon(Icons.account_balance_wallet_outlined),
             activeIcon: Icon(Icons.account_balance_wallet),
-            label: 'Financeiro',
+            label: 'Finanças',
           ),
           BottomNavigationBarItem(
             icon: todayEvents > 0
@@ -229,7 +237,7 @@ class _HomeScreenState extends State<HomeScreen> {
           const BottomNavigationBarItem(
             icon: Icon(Icons.admin_panel_settings_outlined),
             activeIcon: Icon(Icons.admin_panel_settings),
-            label: 'Governança',
+            label: 'Ajustes',
           ),
         ],
       ),

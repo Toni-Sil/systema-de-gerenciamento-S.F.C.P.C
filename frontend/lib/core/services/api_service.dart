@@ -206,6 +206,22 @@ class ApiService {
     return _parse(res);
   }
 
+  Future<Map<String, dynamic>> identify(
+      {required String name,
+      required String role,
+      String? company}) async {
+    final res = await http.post(
+      _uri('/api/v1/auth/identify'),
+      headers: _headers,
+      body: jsonEncode({
+        'name': name,
+        'role': role,
+        if (company != null && company.isNotEmpty) 'company': company,
+      }),
+    );
+    return _parse(res);
+  }
+
   // ─── FORECAST ────────────────────────────────────────────────────────────
 
   Future<Map<String, dynamic>> getForecast(String itemCode) async {

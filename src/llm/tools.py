@@ -2,7 +2,12 @@ from typing import Optional, Dict, Any
 from uuid import UUID
 import json
 from models.entities import MovementType
-from services.stock_service import StockService, product_repo
+from sqlalchemy import select
+
+from db.orm_models import ProductORM
+from db.session import get_session
+from services.ai_admin_service import AIAdminService
+from services.stock_service import StockService
 from data.gold_service import GoldLayerService
 
 class LLMTools:
@@ -14,35 +19,47 @@ class LLMTools:
         Registra uma movimentação de estoque (entrada ou saída).
         """
         try:
-            # Buscar produto pelo código
-            products = await product_repo.get_all()
-            target_product = next((p for p in products if p.code == product_code), None)
-            
-            if not target_product:
-                return json.dumps({"status": "error", "message": f"Produto com código {product_code} não encontrado no sistema."})
-            
-            # Registrar
-            mov_type = MovementType.ENTRY if type.upper() == "ENTRY" else MovementType.EXIT
-            from models.entities import MovementSchema
-            import uuid
-            
-            movement = MovementSchema(
-                id=uuid.uuid4(),
-                tenant_id=tenant_id,
-                product_id=target_product.id,
-                type=mov_type,
-                quantity=quantity,
-                location_id=None,
-                batch_id=None
-            )
+            async with get_session() as session:
+                product_result = await session.execute(
+                    select(ProductORM).where(
+                        ProductORM.tenant_id == tenant_id,
+                        ProductORM.code == product_code,
+                        ProductORM.is_active == True,
+                    )
+                )
+                target_product = product_result.scalar_one_or_none()
 
-            
-            balance_obj = await StockService.process_movement(movement)
-            return json.dumps({
-                "status": "success", 
-                "message": "Movimentação registrada com sucesso.",
-                "new_balance": balance_obj.balance
-            })
+                if not target_product:
+                    return json.dumps({"status": "error", "message": f"Produto com código {product_code} não encontrado no sistema."})
+
+                movement_type = type.upper()
+                if movement_type not in {MovementType.ENTRY.value, MovementType.EXIT.value}:
+                    return json.dumps({
+                        "status": "error",
+                        "message": f"Tipo de movimentação inválido: {type}",
+                    })
+
+                # Registrar
+                mov_type = MovementType(movement_type)
+                from models.entities import MovementSchema
+                import uuid
+
+                movement = MovementSchema(
+                    id=uuid.uuid4(),
+                    tenant_id=tenant_id,
+                    product_id=target_product.id,
+                    type=mov_type,
+                    quantity=quantity,
+                    location_id=None,
+                    batch_id=None
+                )
+
+                balance_obj = await StockService.process_movement(movement, session)
+                return json.dumps({
+                    "status": "success",
+                    "message": "Movimentação registrada com sucesso.",
+                    "new_balance": balance_obj.balance
+                })
         except Exception as e:
             return json.dumps({"status": "error", "message": str(e)})
 
@@ -54,5 +71,39 @@ class LLMTools:
         try:
             summary = await GoldLayerService.get_inventory_summary(tenant_id)
             return json.dumps({"status": "success", "data": summary})
+        except Exception as e:
+            return json.dumps({"status": "error", "message": str(e)})
+
+    @staticmethod
+    async def get_admin_overview(tenant_id: UUID) -> str:
+        """
+        Retorna um quadro de ação para a IA operar como administrador ativo.
+        """
+        try:
+            overview = await GoldLayerService.get_admin_overview(tenant_id)
+            return json.dumps({"status": "success", "data": overview})
+        except Exception as e:
+            return json.dumps({"status": "error", "message": str(e)})
+
+    @staticmethod
+    async def get_admin_work_queue(tenant_id: UUID) -> str:
+        """Sincroniza e retorna a fila de tarefas administrativas sugeridas pela IA."""
+        try:
+            async with get_session() as session:
+                tasks = await AIAdminService.sync_admin_tasks(tenant_id, session)
+            return json.dumps({
+                "status": "success",
+                "data": [task.model_dump(mode="json") for task in tasks],
+            })
+        except Exception as e:
+            return json.dumps({"status": "error", "message": str(e)})
+
+    @staticmethod
+    async def get_daily_admin_briefing(tenant_id: UUID) -> str:
+        """Retorna o briefing administrativo diário consolidado."""
+        try:
+            async with get_session() as session:
+                briefing = await AIAdminService.generate_daily_briefing(tenant_id, session)
+            return json.dumps({"status": "success", "data": briefing.model_dump(mode="json")})
         except Exception as e:
             return json.dumps({"status": "error", "message": str(e)})

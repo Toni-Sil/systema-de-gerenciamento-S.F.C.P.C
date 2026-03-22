@@ -114,107 +114,72 @@ class _DashboardScreenState extends State<DashboardScreen> {
             16, 16, 16, MediaQuery.of(context).padding.bottom + 100),
         children: [
           // ── Header ──────────────────────────────────────
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Expanded(
-                child: Text(
-                  'Lakehouse: Visão Ouro',
-                  style: TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
-                      color: textHigh),
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-              Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                decoration: BoxDecoration(
-                  color: AppColors.neonGreen.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(
-                      color: AppColors.neonGreen.withValues(alpha: 0.3)),
-                ),
-                child: const Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(Icons.sync, size: 12, color: AppColors.neonGreen),
-                    SizedBox(width: 4),
-                    Text('LIVE',
-                        style: TextStyle(
-                            color: AppColors.neonGreen,
-                            fontSize: 10,
-                            fontWeight: FontWeight.bold)),
-                  ],
-                ),
-              ),
-            ],
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final compact = constraints.maxWidth < 360;
+              return Flex(
+                direction: compact ? Axis.vertical : Axis.horizontal,
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                crossAxisAlignment: compact
+                    ? CrossAxisAlignment.start
+                    : CrossAxisAlignment.center,
+                children: [
+                  if (!compact)
+                    Expanded(
+                      child: _buildHeaderTitle(textHigh),
+                    )
+                  else
+                    _buildHeaderTitle(textHigh),
+                  SizedBox(height: compact ? 10 : 0, width: compact ? 0 : 12),
+                  _buildLiveBadge(),
+                ],
+              );
+            },
           ),
 
           const SizedBox(height: 16),
 
-          // ── KPIs: linha 1 ────────────────────────────────
-          Row(
+          _buildResponsiveKpiGrid(
             children: [
-              Expanded(
-                child: _kpiCard(
-                  label: 'Capital em Estoque',
-                  value: _fmtK(capitalK),
-                  icon: Icons.attach_money,
-                  color: AppColors.neonGreen,
-                  cardBg: cardBg,
-                  borderCol: borderCol,
-                  textLow: textLow,
-                ),
+              _kpiCard(
+                label: 'Capital em Estoque',
+                value: _fmtK(capitalK),
+                icon: Icons.attach_money,
+                color: AppColors.neonGreen,
+                cardBg: cardBg,
+                borderCol: borderCol,
+                textLow: textLow,
               ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: _kpiCard(
-                  label: 'Reposições Urgentes',
-                  value: '$urgentes ${urgentes == 1 ? "item" : "itens"}',
-                  icon: Icons.warning_amber_rounded,
-                  color: urgentes > 0
-                      ? AppColors.neonRed
-                      : AppColors.neonGreen,
-                  cardBg: cardBg,
-                  borderCol: borderCol,
-                  textLow: textLow,
-                ),
+              _kpiCard(
+                label: 'Reposições Urgentes',
+                value: '$urgentes ${urgentes == 1 ? "item" : "itens"}',
+                icon: Icons.warning_amber_rounded,
+                color:
+                    urgentes > 0 ? AppColors.neonRed : AppColors.neonGreen,
+                cardBg: cardBg,
+                borderCol: borderCol,
+                textLow: textLow,
               ),
-            ],
-          ),
-          const SizedBox(height: 12),
-
-          // ── KPIs: linha 2 ────────────────────────────────
-          Row(
-            children: [
-              Expanded(
-                child: _kpiCard(
-                  label: 'Total de Produtos',
-                  value: '$totalItens ${totalItens == 1 ? "item" : "itens"}',
-                  icon: Icons.inventory_2_outlined,
-                  color: AppColors.neonCyan,
-                  cardBg: cardBg,
-                  borderCol: borderCol,
-                  textLow: textLow,
-                ),
+              _kpiCard(
+                label: 'Total de Produtos',
+                value: '$totalItens ${totalItens == 1 ? "item" : "itens"}',
+                icon: Icons.inventory_2_outlined,
+                color: AppColors.neonCyan,
+                cardBg: cardBg,
+                borderCol: borderCol,
+                textLow: textLow,
               ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: _kpiCard(
-                  label: 'Custo Est. Reposição',
-                  value: custoReposicao > 0
-                      ? _fmtK(custoReposicao)
-                      : 'Estoque OK',
-                  icon: Icons.price_change_outlined,
-                  color: custoReposicao > 0
-                      ? AppColors.neonAmber
-                      : AppColors.neonGreen,
-                  cardBg: cardBg,
-                  borderCol: borderCol,
-                  textLow: textLow,
-                ),
+              _kpiCard(
+                label: 'Custo Est. Reposição',
+                value:
+                    custoReposicao > 0 ? _fmtK(custoReposicao) : 'Estoque OK',
+                icon: Icons.price_change_outlined,
+                color: custoReposicao > 0
+                    ? AppColors.neonAmber
+                    : AppColors.neonGreen,
+                cardBg: cardBg,
+                borderCol: borderCol,
+                textLow: textLow,
               ),
             ],
           ),
@@ -279,17 +244,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   ),
                 ),
                 const SizedBox(height: 16),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
+                Wrap(
+                  alignment: WrapAlignment.center,
+                  runAlignment: WrapAlignment.center,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  spacing: 16,
+                  runSpacing: 10,
                   children: [
-                    _abcLegend(
-                        AppColors.neonRed, 'A — Alto valor', textLow),
-                    const SizedBox(width: 16),
-                    _abcLegend(
-                        AppColors.neonAmber, 'B — Médio', textLow),
-                    const SizedBox(width: 16),
-                    _abcLegend(
-                        AppColors.neonCyan, 'C — Baixo', textLow),
+                    _abcLegend(AppColors.neonRed, 'A — Alto valor', textLow),
+                    _abcLegend(AppColors.neonAmber, 'B — Médio', textLow),
+                    _abcLegend(AppColors.neonCyan, 'C — Baixo', textLow),
                   ],
                 ),
               ],
@@ -398,16 +362,25 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   return Padding(
                     padding: const EdgeInsets.symmetric(vertical: 4),
                     child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(e.key,
-                            style:
-                                TextStyle(color: textLow, fontSize: 12)),
-                        Text(e.value.toString(),
+                        Expanded(
+                          child: Text(
+                            e.key,
+                            style: TextStyle(color: textLow, fontSize: 12),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Flexible(
+                          child: Text(
+                            e.value.toString(),
+                            textAlign: TextAlign.right,
                             style: TextStyle(
                                 color: textHigh,
                                 fontSize: 12,
-                                fontWeight: FontWeight.bold)),
+                                fontWeight: FontWeight.bold),
+                          ),
+                        ),
                       ],
                     ),
                   );
@@ -417,6 +390,73 @@ class _DashboardScreenState extends State<DashboardScreen> {
           ],
         ],
       ),
+    );
+  }
+
+  Widget _buildHeaderTitle(Color textHigh) {
+    return Text(
+      'Lakehouse: Visão Ouro',
+      style: TextStyle(
+        fontSize: 20,
+        fontWeight: FontWeight.bold,
+        color: textHigh,
+      ),
+      overflow: TextOverflow.ellipsis,
+      maxLines: 2,
+    );
+  }
+
+  Widget _buildLiveBadge() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      decoration: BoxDecoration(
+        color: AppColors.neonGreen.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(
+          color: AppColors.neonGreen.withValues(alpha: 0.3),
+        ),
+      ),
+      child: const Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.sync, size: 12, color: AppColors.neonGreen),
+          SizedBox(width: 4),
+          Text(
+            'LIVE',
+            style: TextStyle(
+              color: AppColors.neonGreen,
+              fontSize: 10,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildResponsiveKpiGrid({
+    required List<Widget> children,
+  }) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final compact = constraints.maxWidth < 360;
+        final itemWidth = compact
+            ? constraints.maxWidth
+            : (constraints.maxWidth - 12) / 2;
+
+        return Wrap(
+          spacing: 12,
+          runSpacing: 12,
+          children: children
+              .map(
+                (child) => SizedBox(
+                  width: itemWidth,
+                  child: child,
+                ),
+              )
+              .toList(),
+        );
+      },
     );
   }
 

@@ -1,43 +1,61 @@
-import sys
-import os
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../')))
-
-from typing import List, Dict, Any
+from datetime import datetime, timedelta
+from typing import Any, Dict, List
 from uuid import UUID
-from models.entities import StockBalanceSchema, ProductSchema, MovementSchema
-from services.stock_service import product_repo, balance_repo, movement_repo
+
+from sqlalchemy import select
+
+from db.orm_models import ProductORM, StockBalanceORM, StockMovementORM
+from db.session import get_session
+
 
 class GoldLayerService:
     """
     Serviço que consolida dados da Silver Layer para a Gold Layer.
     Focado em fornecer dados limpos para IA e Dashboards.
     """
-    
+
     @staticmethod
     async def get_inventory_summary(tenant_id: UUID) -> List[Dict[str, Any]]:
         """
         Gera um resumo do inventário (Gold) cruzando produtos com saldos.
         """
-        products = await product_repo.get_all()
-        balances = await balance_repo.get_all()
-        
+        async with get_session() as session:
+            product_rows = await session.execute(
+                select(ProductORM).where(
+                    ProductORM.tenant_id == tenant_id,
+                    ProductORM.is_active == True,
+                )
+            )
+            balance_rows = await session.execute(
+                select(StockBalanceORM).where(
+                    StockBalanceORM.tenant_id == tenant_id,
+                )
+            )
+
+            products = list(product_rows.scalars().all())
+            balances = list(balance_rows.scalars().all())
+
+        balances_by_product: dict[UUID, float] = {}
+        for balance in balances:
+            balances_by_product[balance.product_id] = (
+                balances_by_product.get(balance.product_id, 0.0) + float(balance.balance)
+            )
+
         gold_data = []
         for product in products:
-            # Filtra saldos deste produto
-            prod_balances = [b for b in balances if b.product_id == product.id]
-            total_balance = sum(b.balance for b in prod_balances)
-            
+            total_balance = balances_by_product.get(product.id, 0.0)
+
             gold_data.append({
                 "product_id": str(product.id),
                 "code": product.code,
                 "description": product.description,
-                "category": product.category,
-                "attributes": product.attributes.model_dump() if product.attributes else None,
+                "category": product.category.value if product.category else None,
+                "attributes": product.attributes,
                 "total_balance": total_balance,
-                "min_stock": product.min_stock,
-                "is_low_stock": total_balance < product.min_stock
+                "min_stock": float(product.min_stock),
+                "is_low_stock": total_balance < float(product.min_stock),
             })
-            
+
         return gold_data
 
     @staticmethod
@@ -45,5 +63,82 @@ class GoldLayerService:
         """
         Retorna histórico de movimentações pronto para análise de ML.
         """
-        movements = await movement_repo.get_all()
-        return [m.model_dump() for m in movements]
+        async with get_session() as session:
+            rows = await session.execute(
+                select(StockMovementORM).where(
+                    StockMovementORM.tenant_id == tenant_id,
+                )
+            )
+            movements = list(rows.scalars().all())
+
+        return [
+            {
+                "id": str(m.id),
+                "tenant_id": str(m.tenant_id),
+                "product_id": str(m.product_id),
+                "user_id": str(m.user_id) if m.user_id else None,
+                "batch_id": str(m.batch_id) if m.batch_id else None,
+                "location_id": str(m.location_id) if m.location_id else None,
+                "type": m.type.value,
+                "quantity": float(m.quantity),
+                "reference_doc": m.reference_doc,
+                "notes": m.notes,
+                "created_at": m.created_at.isoformat(),
+            }
+            for m in movements
+        ]
+
+    @staticmethod
+    async def get_admin_overview(tenant_id: UUID) -> Dict[str, Any]:
+        """
+        Consolida um quadro executivo para uma IA atuar como administrador ativo.
+        """
+        inventory = await GoldLayerService.get_inventory_summary(tenant_id)
+        low_stock_items = [
+            item for item in inventory
+            if item["is_low_stock"]
+        ]
+
+        low_stock_items.sort(
+            key=lambda item: (
+                item["total_balance"] - item["min_stock"],
+                item["code"],
+            )
+        )
+
+        actions = []
+        for item in low_stock_items[:5]:
+            deficit = round(item["min_stock"] - item["total_balance"], 2)
+            priority_score = round(
+                min(100.0, 45.0 + (deficit * 4) + (15.0 if deficit >= 5 else 0.0)),
+                2,
+            )
+            actions.append(
+                {
+                    "type": "replenish",
+                    "priority": "high" if priority_score >= 80 else "medium",
+                    "priority_score": priority_score,
+                    "product_code": item["code"],
+                    "current_balance": item["total_balance"],
+                    "min_stock": item["min_stock"],
+                    "deficit": deficit,
+                    "due_date": (
+                        datetime.utcnow() + timedelta(hours=4 if priority_score >= 80 else 24)
+                    ).isoformat(),
+                    "reason": "Produto abaixo do estoque mínimo operacional.",
+                    "message": (
+                        f"Repor {item['code']} para cobrir déficit de {deficit} "
+                        f"e retornar ao estoque mínimo."
+                    ),
+                }
+            )
+
+        return {
+            "headline": (
+                f"{len(low_stock_items)} item(ns) com risco de ruptura exigem atenção imediata."
+            ),
+            "total_products": len(inventory),
+            "low_stock_count": len(low_stock_items),
+            "critical_items": low_stock_items[:5],
+            "recommended_actions": actions,
+        }
