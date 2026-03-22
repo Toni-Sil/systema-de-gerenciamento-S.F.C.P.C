@@ -362,16 +362,25 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   return Padding(
                     padding: const EdgeInsets.symmetric(vertical: 4),
                     child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(e.key,
-                            style:
-                                TextStyle(color: textLow, fontSize: 12)),
-                        Text(e.value.toString(),
+                        Expanded(
+                          child: Text(
+                            e.key,
+                            style: TextStyle(color: textLow, fontSize: 12),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Flexible(
+                          child: Text(
+                            e.value.toString(),
+                            textAlign: TextAlign.right,
                             style: TextStyle(
                                 color: textHigh,
                                 fontSize: 12,
-                                fontWeight: FontWeight.bold)),
+                                fontWeight: FontWeight.bold),
+                          ),
+                        ),
                       ],
                     ),
                   );

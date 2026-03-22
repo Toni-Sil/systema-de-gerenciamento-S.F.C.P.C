@@ -548,29 +548,55 @@ class _FinancialScreenState extends State<FinancialScreen> {
                 Text(t['description'] as String? ?? '',
                     style: TextStyle(color: textMed, fontSize: 12)),
                 const SizedBox(height: 6),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(valueStr,
-                        style: TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 14,
-                            color: color)),
-                    Row(
-                      mainAxisSize: MainAxisSize.min,
+                LayoutBuilder(
+                  builder: (context, constraints) {
+                    final compact = constraints.maxWidth < 320;
+                    final badgeWrap = Wrap(
+                      spacing: 6,
+                      runSpacing: 6,
+                      alignment: WrapAlignment.end,
                       children: [
                         _badge(
                             t['category'] as String? ?? '',
                             surfaceColor,
                             textLow),
-                        const SizedBox(width: 6),
                         _badge(
                             t['status'] as String? ?? '',
                             color.withValues(alpha: 0.1),
                             color),
                       ],
-                    ),
-                  ],
+                    );
+
+                    if (compact) {
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(valueStr,
+                              style: TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 14,
+                                  color: color)),
+                          const SizedBox(height: 8),
+                          badgeWrap,
+                        ],
+                      );
+                    }
+
+                    return Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(
+                          child: Text(valueStr,
+                              style: TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 14,
+                                  color: color)),
+                        ),
+                        const SizedBox(width: 8),
+                        Flexible(child: badgeWrap),
+                      ],
+                    );
+                  },
                 ),
               ],
             ),

@@ -97,114 +97,125 @@ class _SettingsScreenState extends State<SettingsScreen> {
       shape: const RoundedRectangleBorder(
           borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
       builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setSheet) => Padding(
-          padding: EdgeInsets.fromLTRB(
-              20, 20, 20, MediaQuery.of(ctx).viewInsets.bottom + 24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text('Editar Perfil',
-                  style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                      color: Theme.of(ctx).colorScheme.onSurface)),
-              const SizedBox(height: 20),
-              Text('Avatar:',
-                  style: TextStyle(
-                      color: Theme.of(ctx)
-                          .colorScheme
-                          .onSurface
-                          .withValues(alpha: 0.5),
-                      fontSize: 13)),
-              const SizedBox(height: 10),
-              SizedBox(
-                height: 60,
-                child: ListView.builder(
-                  scrollDirection: Axis.horizontal,
-                  itemCount: avatarPresets.length,
-                  itemBuilder: (_, i) {
-                    final av = avatarPresets[i];
-                    final sel = selectedAvatar == av;
-                    return GestureDetector(
-                      onTap: () => setSheet(() => selectedAvatar = av),
-                      child: Container(
-                        margin:
-                            const EdgeInsets.symmetric(horizontal: 8),
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          border: Border.all(
-                            color: sel
-                                ? AppColors.neonCyan
-                                : Colors.transparent,
-                            width: 3,
+        builder: (ctx, setSheet) => SafeArea(
+          child: SingleChildScrollView(
+            padding: EdgeInsets.fromLTRB(
+                20, 20, 20, MediaQuery.of(ctx).viewInsets.bottom + 24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Editar Perfil',
+                    style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        color: Theme.of(ctx).colorScheme.onSurface)),
+                const SizedBox(height: 20),
+                Text('Avatar:',
+                    style: TextStyle(
+                        color: Theme.of(ctx)
+                            .colorScheme
+                            .onSurface
+                            .withValues(alpha: 0.5),
+                        fontSize: 13)),
+                const SizedBox(height: 10),
+                SizedBox(
+                  height: 60,
+                  child: ListView.builder(
+                    scrollDirection: Axis.horizontal,
+                    itemCount: avatarPresets.length,
+                    itemBuilder: (_, i) {
+                      final av = avatarPresets[i];
+                      final sel = selectedAvatar == av;
+                      return GestureDetector(
+                        onTap: () => setSheet(() => selectedAvatar = av),
+                        child: Container(
+                          margin: const EdgeInsets.symmetric(horizontal: 8),
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            border: Border.all(
+                              color: sel
+                                  ? AppColors.neonCyan
+                                  : Colors.transparent,
+                              width: 3,
+                            ),
+                          ),
+                          child: CircleAvatar(
+                            radius: 25,
+                            backgroundImage: NetworkImage(av),
                           ),
                         ),
-                        child: CircleAvatar(
-                          radius: 25,
-                          backgroundImage: NetworkImage(av),
-                        ),
-                      ),
-                    );
-                  },
-                ),
-              ),
-              const SizedBox(height: 16),
-              SegmentedButton<String>(
-                segments: const [
-                  ButtonSegment<String>(
-                    value: 'manager',
-                    label: Text('Chefia'),
-                    icon: Icon(Icons.badge_outlined),
-                  ),
-                  ButtonSegment<String>(
-                    value: 'operator',
-                    label: Text('Funcionário'),
-                    icon: Icon(Icons.groups_outlined),
-                  ),
-                ],
-                selected: {selectedRole},
-                onSelectionChanged: (value) =>
-                    setSheet(() => selectedRole = value.first),
-              ),
-              const SizedBox(height: 16),
-              TextField(
-                controller: nameCtrl,
-                decoration: const InputDecoration(
-                    labelText: 'Seu Nome',
-                    prefixIcon: Icon(Icons.person)),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: companyCtrl,
-                decoration: const InputDecoration(
-                    labelText: 'Nome da Empresa',
-                    prefixIcon: Icon(Icons.business)),
-              ),
-              const SizedBox(height: 20),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  onPressed: () async {
-                    await up.updateProfile(
-                      nameCtrl.text,
-                      companyCtrl.text,
-                      imageUrl: selectedAvatar,
-                      role: selectedRole,
-                    );
-                    if (ctx.mounted) Navigator.pop(ctx);
-                    if (mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                            content: Text('Perfil atualizado \u2714\uFE0F'),
-                            backgroundColor: AppColors.neonGreen),
                       );
-                    }
-                  },
-                  child: const Text('Salvar',
-                      style: TextStyle(fontWeight: FontWeight.bold)),
+                    },
+                  ),
                 ),
-              ),
-            ],
+                const SizedBox(height: 16),
+                Text('Perfil',
+                    style: TextStyle(
+                        color: Theme.of(ctx)
+                            .colorScheme
+                            .onSurface
+                            .withValues(alpha: 0.5),
+                        fontSize: 13)),
+                const SizedBox(height: 10),
+                Wrap(
+                  spacing: 10,
+                  runSpacing: 10,
+                  children: [
+                    ChoiceChip(
+                      label: const Text('Chefia'),
+                      avatar: const Icon(Icons.badge_outlined, size: 18),
+                      selected: selectedRole == 'manager',
+                      onSelected: (_) => setSheet(() => selectedRole = 'manager'),
+                    ),
+                    ChoiceChip(
+                      label: const Text('Funcionário'),
+                      avatar: const Icon(Icons.groups_outlined, size: 18),
+                      selected: selectedRole == 'operator',
+                      onSelected: (_) => setSheet(() => selectedRole = 'operator'),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: nameCtrl,
+                  decoration: const InputDecoration(
+                      labelText: 'Seu Nome',
+                      prefixIcon: Icon(Icons.person)),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: companyCtrl,
+                  decoration: const InputDecoration(
+                      labelText: 'Nome da Empresa',
+                      prefixIcon: Icon(Icons.business)),
+                ),
+                const SizedBox(height: 20),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    onPressed: () async {
+                      await up.updateProfile(
+                        nameCtrl.text,
+                        companyCtrl.text,
+                        imageUrl: selectedAvatar,
+                        role: selectedRole,
+                      );
+                      if (ctx.mounted) Navigator.pop(ctx);
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                              content: Text('Perfil atualizado \u2714\uFE0F'),
+                              backgroundColor: AppColors.neonGreen),
+                        );
+                      }
+                    },
+                    child: const Text('Salvar',
+                        style: TextStyle(fontWeight: FontWeight.bold)),
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -242,59 +253,59 @@ class _SettingsScreenState extends State<SettingsScreen> {
               border: Border.all(
                   color: AppColors.neonCyan.withValues(alpha: 0.2)),
             ),
-            child: Row(
-              children: [
-                Stack(
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final compact = constraints.maxWidth < 360;
+                return Flex(
+                  direction: compact ? Axis.vertical : Axis.horizontal,
+                  crossAxisAlignment: compact
+                      ? CrossAxisAlignment.start
+                      : CrossAxisAlignment.center,
                   children: [
-                    CircleAvatar(
-                      radius: 34,
-                      backgroundImage: NetworkImage(up.profileImageUrl),
-                      backgroundColor:
-                          AppColors.neonCyan.withValues(alpha: 0.1),
-                    ),
-                    Positioned(
-                      bottom: 0,
-                      right: 0,
-                      child: Container(
-                        padding: const EdgeInsets.all(4),
-                        decoration: const BoxDecoration(
-                          color: AppColors.neonCyan,
-                          shape: BoxShape.circle,
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Stack(
+                          children: [
+                            CircleAvatar(
+                              radius: 34,
+                              backgroundImage: NetworkImage(up.profileImageUrl),
+                              backgroundColor:
+                                  AppColors.neonCyan.withValues(alpha: 0.1),
+                            ),
+                            Positioned(
+                              bottom: 0,
+                              right: 0,
+                              child: Container(
+                                padding: const EdgeInsets.all(4),
+                                decoration: const BoxDecoration(
+                                  color: AppColors.neonCyan,
+                                  shape: BoxShape.circle,
+                                ),
+                                child: const Icon(Icons.edit,
+                                    size: 11, color: AppColors.bgDeep),
+                              ),
+                            ),
+                          ],
                         ),
-                        child: const Icon(Icons.edit,
-                            size: 11, color: AppColors.bgDeep),
-                      ),
+                        if (compact) const SizedBox(width: 12),
+                        if (compact) Icon(Icons.chevron_right, color: textLow),
+                      ],
                     ),
-                  ],
-                ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(up.adminName,
-                          style: TextStyle(
-                              fontSize: 20,
-                              fontWeight: FontWeight.bold,
-                              color: textHigh)),
-                      const SizedBox(height: 2),
-                      Text(
-                        up.role == 'manager' || up.role == 'admin' || up.role == 'owner'
-                            ? 'Chefia'
-                            : 'Funcionário',
-                        style: const TextStyle(
-                            color: AppColors.neonCyan,
-                            fontWeight: FontWeight.w600,
-                            fontSize: 13),
-                      ),
-                      const SizedBox(height: 3),
-                      Text(up.companyName,
-                          style: TextStyle(fontSize: 13, color: textLow)),
+                    SizedBox(width: compact ? 0 : 16, height: compact ? 14 : 0),
+                    if (!compact)
+                      Expanded(
+                        child: _buildProfileTexts(up, textHigh, textLow),
+                      )
+                    else
+                      _buildProfileTexts(up, textHigh, textLow),
+                    if (!compact) ...[
+                      const SizedBox(width: 12),
+                      Icon(Icons.chevron_right, color: textLow),
                     ],
-                  ),
-                ),
-                Icon(Icons.chevron_right, color: textLow),
-              ],
+                  ],
+                );
+              },
             ),
           ),
         ),
@@ -480,6 +491,31 @@ class _SettingsScreenState extends State<SettingsScreen> {
           label: const Text('Desconectar (Limpar JWT)',
               style: TextStyle(fontWeight: FontWeight.bold)),
         ),
+      ],
+    );
+  }
+  Widget _buildProfileTexts(UserProvider up, Color textHigh, Color textLow) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(up.adminName,
+            style: TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.bold,
+                color: textHigh)),
+        const SizedBox(height: 2),
+        Text(
+          up.role == 'manager' || up.role == 'admin' || up.role == 'owner'
+              ? 'Chefia'
+              : 'Funcionário',
+          style: const TextStyle(
+              color: AppColors.neonCyan,
+              fontWeight: FontWeight.w600,
+              fontSize: 13),
+        ),
+        const SizedBox(height: 3),
+        Text(up.companyName,
+            style: TextStyle(fontSize: 13, color: textLow)),
       ],
     );
   }
