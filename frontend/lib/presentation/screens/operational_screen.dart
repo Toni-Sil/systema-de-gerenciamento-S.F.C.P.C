@@ -587,18 +587,18 @@ class _OperationalScreenState extends State<OperationalScreen> {
             Padding(
               padding:
                   const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              child: Row(
+              child: Wrap(
+                spacing: 8,
+                runSpacing: 8,
                 children: [
                   _kpiChip('${op.totalItems} itens',
                       Icons.inventory_2_outlined, AppColors.neonCyan),
-                  const SizedBox(width: 8),
                   _kpiChip(
                       '${op.lowStockItems.length} reposições',
                       Icons.warning_amber,
                       op.lowStockItems.isEmpty
                           ? AppColors.neonGreen
                           : AppColors.neonRed),
-                  const SizedBox(width: 8),
                   _kpiChip(
                       'R\$ ${(op.totalStockValue / 1000).toStringAsFixed(1)}K',
                       Icons.attach_money,

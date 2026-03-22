@@ -127,7 +127,7 @@ class _FinancialScreenState extends State<FinancialScreen> {
                 children: [
                   // ── Card ROI ───────────────────────────────────────
                   Container(
-                    padding: const EdgeInsets.all(24),
+                    padding: const EdgeInsets.all(20),
                     decoration: BoxDecoration(
                       gradient: LinearGradient(
                         colors: [
@@ -146,21 +146,19 @@ class _FinancialScreenState extends State<FinancialScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Text('ROI Consolidado do Agente',
-                                style:
-                                    TextStyle(color: textLow, fontSize: 13)),
-                            GestureDetector(
+                        LayoutBuilder(
+                          builder: (context, constraints) {
+                            final compact = constraints.maxWidth < 380;
+                            final exportButton = GestureDetector(
                               onTap: () => Navigator.push(
                                   context,
                                   MaterialPageRoute(
                                       builder: (_) =>
                                           const WhatsAppReportScreen())),
                               child: Container(
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 10, vertical: 5),
+                                padding: EdgeInsets.symmetric(
+                                    horizontal: compact ? 8 : 10,
+                                    vertical: compact ? 4 : 5),
                                 decoration: BoxDecoration(
                                   color: const Color(0xFF25D366)
                                       .withValues(alpha: 0.15),
@@ -169,22 +167,45 @@ class _FinancialScreenState extends State<FinancialScreen> {
                                       color: const Color(0xFF25D366)
                                           .withValues(alpha: 0.4)),
                                 ),
-                                child: const Row(
+                                child: Row(
                                   mainAxisSize: MainAxisSize.min,
                                   children: [
-                                    Icon(Icons.share,
+                                    const Icon(Icons.share,
                                         color: Color(0xFF25D366), size: 14),
-                                    SizedBox(width: 5),
+                                    const SizedBox(width: 5),
                                     Text('Exportar',
                                         style: TextStyle(
-                                            color: Color(0xFF25D366),
-                                            fontSize: 11,
+                                            color: const Color(0xFF25D366),
+                                            fontSize: compact ? 10 : 11,
                                             fontWeight: FontWeight.bold)),
                                   ],
                                 ),
                               ),
-                            ),
-                          ],
+                            );
+
+                            return Flex(
+                              direction:
+                                  compact ? Axis.vertical : Axis.horizontal,
+                              crossAxisAlignment: compact
+                                  ? CrossAxisAlignment.start
+                                  : CrossAxisAlignment.center,
+                              mainAxisAlignment:
+                                  MainAxisAlignment.spaceBetween,
+                              children: [
+                                Flexible(
+                                  child: Text(
+                                    'ROI Consolidado do Agente',
+                                    style: TextStyle(
+                                        color: textLow, fontSize: 13),
+                                  ),
+                                ),
+                                SizedBox(
+                                    height: compact ? 10 : 0,
+                                    width: compact ? 0 : 12),
+                                exportButton,
+                              ],
+                            );
+                          },
                         ),
                         const SizedBox(height: 8),
                         // ── Valor ROI formatado pt-BR ──────────────────
@@ -202,30 +223,46 @@ class _FinancialScreenState extends State<FinancialScreen> {
                         ),
                         const SizedBox(height: 16),
                         // ── Sub-KPIs — textLow real passado como parâmetro ──
-                        Row(
-                          children: [
-                            Expanded(
-                              child: _subKpi(
+                        LayoutBuilder(
+                          builder: (context, constraints) {
+                            final compact = constraints.maxWidth < 360;
+                            final children = [
+                              _subKpi(
                                   'Receitas + Econ.',
                                   _fmtK(_revenue),
                                   AppColors.neonGreen,
                                   textLow),
-                            ),
-                            Expanded(
-                              child: _subKpi(
+                              _subKpi(
                                   'Custos Reg.',
                                   _fmtK(_expenses),
                                   AppColors.neonRed,
                                   textLow),
-                            ),
-                            Expanded(
-                              child: _subKpi(
+                              _subKpi(
                                   'Cap. Estoque',
                                   _fmtK(op.totalStockValue),
                                   AppColors.neonAmber,
                                   textLow),
-                            ),
-                          ],
+                            ];
+
+                            if (compact) {
+                              return Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: children
+                                    .map((child) => Padding(
+                                          padding:
+                                              const EdgeInsets.only(bottom: 10),
+                                          child: child,
+                                        ))
+                                    .toList(),
+                              );
+                            }
+
+                            return Row(
+                              children: children
+                                  .map((child) => Expanded(child: child))
+                                  .toList(),
+                            );
+                          },
                         ),
                       ],
                     ),
@@ -234,19 +271,24 @@ class _FinancialScreenState extends State<FinancialScreen> {
                   const SizedBox(height: 24),
 
                   // ── Selector de período ────────────────────────────
-                  Row(
+                  Wrap(
+                    alignment: WrapAlignment.spaceBetween,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    spacing: 8,
+                    runSpacing: 10,
                     children: [
                       Text('Gráfico Financeiro',
                           style: TextStyle(
                               fontSize: 16,
                               fontWeight: FontWeight.w700,
                               color: textHigh)),
-                      const Spacer(),
-                      ...[
-                        ('7d', '7D'),
-                        ('30d', '30D'),
-                        ('90d', '3M')
-                      ].map((p) => GestureDetector(
+                      Wrap(
+                        spacing: 6,
+                        children: [
+                          ('7d', '7D'),
+                          ('30d', '30D'),
+                          ('90d', '3M')
+                        ].map((p) => GestureDetector(
                             onTap: () {
                               setState(() => _period = p.$1);
                               _loadData();
@@ -274,7 +316,8 @@ class _FinancialScreenState extends State<FinancialScreen> {
                                       fontSize: 11,
                                       fontWeight: FontWeight.bold)),
                             ),
-                          )),
+                          )).toList(),
+                      ),
                     ],
                   ),
 

@@ -188,12 +188,12 @@ class _HomeScreenState extends State<HomeScreen> {
           const BottomNavigationBarItem(
             icon: Icon(Icons.psychology_outlined),
             activeIcon: Icon(Icons.psychology),
-            label: 'Agente IA',
+            label: 'Agente',
           ),
           const BottomNavigationBarItem(
             icon: Icon(Icons.bar_chart_outlined),
             activeIcon: Icon(Icons.bar_chart),
-            label: 'Indicadores',
+            label: 'Painel',
           ),
           BottomNavigationBarItem(
             icon: alertCount > 0
@@ -206,12 +206,12 @@ class _HomeScreenState extends State<HomeScreen> {
                     label: Text('$alertCount'),
                     child: const Icon(Icons.inventory_2))
                 : const Icon(Icons.inventory_2),
-            label: 'Operacional',
+            label: 'Estoque',
           ),
           const BottomNavigationBarItem(
             icon: Icon(Icons.account_balance_wallet_outlined),
             activeIcon: Icon(Icons.account_balance_wallet),
-            label: 'Financeiro',
+            label: 'Finanças',
           ),
           BottomNavigationBarItem(
             icon: todayEvents > 0
@@ -229,7 +229,7 @@ class _HomeScreenState extends State<HomeScreen> {
           const BottomNavigationBarItem(
             icon: Icon(Icons.admin_panel_settings_outlined),
             activeIcon: Icon(Icons.admin_panel_settings),
-            label: 'Governança',
+            label: 'Ajustes',
           ),
         ],
       ),

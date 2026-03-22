@@ -32,6 +32,7 @@ class GlassNavBar extends StatelessWidget {
 
     // Altura da barra + padding do sistema (home indicator no iOS/Android)
     final bottomPadding = MediaQuery.of(context).padding.bottom;
+    final compact = MediaQuery.of(context).size.width < 410;
 
     return ClipRect(
       child: BackdropFilter(
@@ -54,13 +55,13 @@ class GlassNavBar extends StatelessWidget {
               unselectedItemColor: unselectedColor,
               showUnselectedLabels: true,
               elevation: 0,
-              selectedLabelStyle: const TextStyle(
+              selectedLabelStyle: TextStyle(
                 fontWeight: FontWeight.bold,
-                fontSize: 11,
+                fontSize: compact ? 9 : 11,
                 fontFamily: 'Inter',
               ),
-              unselectedLabelStyle: const TextStyle(
-                fontSize: 10,
+              unselectedLabelStyle: TextStyle(
+                fontSize: compact ? 8 : 10,
                 fontFamily: 'Inter',
               ),
               items: items,
