@@ -78,6 +78,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final nameCtrl = TextEditingController(text: up.adminName);
     final companyCtrl = TextEditingController(text: up.companyName);
     String selectedAvatar = up.profileImageUrl;
+    String selectedRole =
+        (up.role == 'manager' || up.role == 'admin' || up.role == 'owner')
+            ? 'manager'
+            : 'operator';
 
     final avatarPresets = [
       'https://ui-avatars.com/api/?name=${Uri.encodeComponent(up.adminName)}&background=00BCD4&color=fff',
@@ -145,6 +149,24 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ),
               ),
               const SizedBox(height: 16),
+              SegmentedButton<String>(
+                segments: const [
+                  ButtonSegment<String>(
+                    value: 'manager',
+                    label: Text('Chefia'),
+                    icon: Icon(Icons.badge_outlined),
+                  ),
+                  ButtonSegment<String>(
+                    value: 'operator',
+                    label: Text('Funcionário'),
+                    icon: Icon(Icons.groups_outlined),
+                  ),
+                ],
+                selected: {selectedRole},
+                onSelectionChanged: (value) =>
+                    setSheet(() => selectedRole = value.first),
+              ),
+              const SizedBox(height: 16),
               TextField(
                 controller: nameCtrl,
                 decoration: const InputDecoration(
@@ -167,6 +189,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       nameCtrl.text,
                       companyCtrl.text,
                       imageUrl: selectedAvatar,
+                      role: selectedRole,
                     );
                     if (ctx.mounted) Navigator.pop(ctx);
                     if (mounted) {
@@ -256,9 +279,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                               color: textHigh)),
                       const SizedBox(height: 2),
                       Text(
-                        up.role == 'admin' || up.role == 'owner'
-                            ? 'Administrador Master'
-                            : 'Operador',
+                        up.role == 'manager' || up.role == 'admin' || up.role == 'owner'
+                            ? 'Chefia'
+                            : 'Funcionário',
                         style: const TextStyle(
                             color: AppColors.neonCyan,
                             fontWeight: FontWeight.w600,

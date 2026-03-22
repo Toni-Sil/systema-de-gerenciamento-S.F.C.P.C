@@ -1,10 +1,11 @@
 import os
 import time
-from jose import ExpiredSignatureError, JWTError, jwt
 from uuid import UUID
+
 from fastapi import HTTPException, Security
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 import logging
+from jose import ExpiredSignatureError, JWTError, jwt
 
 logger = logging.getLogger(__name__)
 
@@ -24,16 +25,28 @@ ACCESS_TOKEN_EXPIRE_SECONDS = int(os.getenv("ACCESS_TOKEN_EXPIRE_SECONDS", 3600)
 security = HTTPBearer(auto_error=True)
 
 
-def create_jwt_token(tenant_id: str, user_id: str, role: str = "operator") -> str:
+def create_jwt_token(
+    tenant_id: str,
+    user_id: str,
+    role: str = "operator",
+    *,
+    name: str | None = None,
+    company: str | None = None,
+) -> str:
     """Creates a signed JWT with tenant, user, and role claims."""
     now = time.time()
     payload = {
         "tenant_id": tenant_id,
         "user_id": user_id,
+        "sub": user_id,
         "role": role,
         "iat": now,
         "exp": now + ACCESS_TOKEN_EXPIRE_SECONDS,
     }
+    if name:
+        payload["name"] = name
+    if company:
+        payload["company"] = company
     return jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
 
 

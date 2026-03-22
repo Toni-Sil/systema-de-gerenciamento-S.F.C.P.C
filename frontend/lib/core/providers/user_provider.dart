@@ -5,6 +5,7 @@
 // FIX #2: logout chama OfflineSyncService.clearAll() para limpar dados Hive do usuário
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../models/user_model.dart';
 import '../services/api_service.dart';
 import '../services/secure_storage_service.dart';
@@ -47,6 +48,11 @@ class UserProvider with ChangeNotifier {
         debugPrint('[UserProvider] init parse error: $e');
         await _clearSession();
       }
+    } else {
+      await identify(
+        name: 'Equipe',
+        role: 'operator',
+      );
     }
   }
 
@@ -88,22 +94,61 @@ class UserProvider with ChangeNotifier {
     }
   }
 
+  Future<bool> identify({
+    required String name,
+    required String role,
+    String? company,
+  }) async {
+    _lastLoginError = LoginError.none;
+    try {
+      final res = await ApiService.instance.identify(
+        name: name,
+        role: role,
+        company: company,
+      );
+      final token = res['access_token'] as String;
+      await ApiService.instance.setToken(token);
+
+      final parts = token.split('.');
+      if (parts.length == 3) {
+        final payload =
+            utf8.decode(base64Url.decode(base64Url.normalize(parts[1])));
+        final claims = jsonDecode(payload) as Map<String, dynamic>;
+        _user = UserModel.fromJwtClaims(claims);
+        await SecureStorageService.instance.writeUserData(jsonEncode(claims));
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString('operational_role', role);
+        await prefs.setString('operational_name', name);
+      }
+
+      _isAuthenticated = true;
+      notifyListeners();
+      return true;
+    } catch (e) {
+      debugPrint('[UserProvider] identify error: $e');
+      return false;
+    }
+  }
+
   Future<void> logout() async {
     await _clearSession();
   }
 
   Future<void> updateProfile(String name, String company,
-      {String? imageUrl}) async {
+      {String? imageUrl, String? role}) async {
     if (!_isAuthenticated) {
       debugPrint(
           '[UserProvider] updateProfile bloqueado: usuário não autenticado');
       return;
     }
+    final nextRole = role ?? _user.role;
+    final identified = await identify(name: name, role: nextRole, company: company);
+    if (!identified) return;
     _user = UserModel(
       id: _user.id,
       name: name,
       company: company,
-      role: _user.role,
+      role: nextRole,
       tenantId: _user.tenantId,
       profileImageUrl: imageUrl ?? _user.profileImageUrl,
     );

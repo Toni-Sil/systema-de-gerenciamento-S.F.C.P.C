@@ -7,6 +7,7 @@ Each route group is organized as an APIRouter and mounted with a prefix.
 """
 import logging
 import os
+from uuid import NAMESPACE_DNS, uuid5
 from contextlib import asynccontextmanager
 from datetime import date, timedelta
 from typing import List, Optional
@@ -372,6 +373,28 @@ class LoginRequest(BaseModel):
     password: str
 
 
+class IdentificationRequest(BaseModel):
+    name: str
+    role: str
+    company: str | None = None
+
+
+def _normalize_operational_role(raw_role: str) -> str:
+    normalized = raw_role.strip().lower()
+    role_map = {
+        "chefia": "manager",
+        "manager": "manager",
+        "gestor": "manager",
+        "funcionario": "operator",
+        "funcionário": "operator",
+        "operator": "operator",
+        "operador": "operator",
+    }
+    if normalized not in role_map:
+        raise HTTPException(status_code=400, detail="Invalid operational role")
+    return role_map[normalized]
+
+
 @app.post("/auth/register", response_model=UserSchema, tags=["Auth"], status_code=201)
 async def register_user(data: UserCreateSchema):
     async with get_session() as session:
@@ -388,6 +411,23 @@ async def login_v1(request: LoginRequest):
             plain_password=request.password,
             session=session,
         )
+
+
+@app.post("/api/v1/auth/identify", tags=["Auth"])
+async def identify_operator(request: IdentificationRequest):
+    role = _normalize_operational_role(request.role)
+    company = (request.company or os.getenv("COMPANY_NAME") or "S.F.C.P.C").strip()
+    display_name = request.name.strip() or ("Chefia" if role == "manager" else "Funcionário")
+    tenant_id = os.getenv("DEFAULT_TENANT_ID", "00000000-0000-0000-0000-000000000001")
+    user_id = str(uuid5(NAMESPACE_DNS, f"{company}:{role}:{display_name}"))
+    token = create_jwt_token(
+        tenant_id=tenant_id,
+        user_id=user_id,
+        role=role,
+        name=display_name,
+        company=company,
+    )
+    return {"access_token": token, "token_type": "bearer"}
 
 
 # ---------------------------------------------------------------------------
