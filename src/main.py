@@ -218,6 +218,7 @@ async def financial_transactions(period: str = Query("30d")):
 from pydantic import BaseModel
 class ChatMessage(BaseModel):
     message: str
+    context: str | None = None
 
 
 class AIAdminTaskFeedbackRequest(BaseModel):
@@ -231,6 +232,7 @@ async def chat_with_agent(chat_input: ChatMessage):
     reply = await AgentOrchestrator.process_message(
         tenant_id=get_tenant_id(),
         message=chat_input.message,
+        context=chat_input.context,
     )
     return {"reply": reply}
 

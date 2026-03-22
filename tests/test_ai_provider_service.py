@@ -106,3 +106,39 @@ async def test_validate_config_marks_missing_hosted_api_key_as_invalid():
     assert config is not None
     assert config.last_validation_status == "invalid"
     assert "api_key" in (config.last_validation_error or "")
+
+
+@pytest.mark.asyncio
+async def test_get_config_marks_corrupted_encrypted_key_as_invalid(monkeypatch):
+    tenant_id = uuid4()
+    session = AsyncMock()
+    config_row = type(
+        "Config",
+        (),
+        {
+            "id": uuid4(),
+            "tenant_id": tenant_id,
+            "provider": AIProviderType.OPENAI,
+            "model_name": "gpt-4.1-mini",
+            "api_base_url": None,
+            "api_key_encrypted": "invalid-token",
+            "is_active": True,
+            "temperature": 0.2,
+            "max_tokens": 1200,
+            "system_prompt_override": None,
+            "updated_by_user_id": None,
+            "last_validated_at": None,
+            "last_validation_status": None,
+            "last_validation_error": None,
+            "created_at": datetime.utcnow(),
+            "updated_at": datetime.utcnow(),
+        },
+    )()
+    session.execute.return_value = _FakeResult(config_row)
+
+    config = await AIProviderService.get_config(tenant_id, session)
+
+    assert config is not None
+    assert config.api_key_masked is None
+    assert config.last_validation_status == "invalid"
+    assert config.last_validation_error == "stored_api_key_cannot_be_decrypted"

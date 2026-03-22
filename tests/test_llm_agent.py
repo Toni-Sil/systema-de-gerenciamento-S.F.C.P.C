@@ -164,3 +164,66 @@ async def test_agent_rejects_unknown_intent():
     assert payload["action"] == "Unknown"
     assert payload["status"] == "failed"
     assert "logística" in payload["motivo"]
+
+
+@pytest.mark.asyncio
+async def test_agent_extracts_product_code_from_message_and_context(monkeypatch):
+    tenant_id = uuid4()
+    mocked_record = AsyncMock(
+        return_value=json.dumps(
+            {
+                "status": "success",
+                "message": "Movimentação registrada com sucesso.",
+                "new_balance": 22.0,
+            }
+        )
+    )
+
+    monkeypatch.setattr("llm.agent.LLMTools.record_movement", mocked_record)
+
+    payload = json.loads(
+        await AgentOrchestrator.process_message(
+            tenant_id,
+            "Dar entrada em 2 unidades do produto tec-009",
+        )
+    )
+
+    assert payload["params"]["product"] == "TEC-009"
+    mocked_record.assert_awaited_once_with(
+        tenant_id=tenant_id,
+        product_code="TEC-009",
+        type="ENTRY",
+        quantity=2.0,
+    )
+
+
+@pytest.mark.asyncio
+async def test_agent_uses_context_to_extract_product_code(monkeypatch):
+    tenant_id = uuid4()
+    mocked_record = AsyncMock(
+        return_value=json.dumps(
+            {
+                "status": "success",
+                "message": "Movimentação registrada com sucesso.",
+                "new_balance": 7.0,
+            }
+        )
+    )
+
+    monkeypatch.setattr("llm.agent.LLMTools.record_movement", mocked_record)
+
+    payload = json.loads(
+        await AgentOrchestrator.process_message(
+            tenant_id,
+            "Registrar saída de 3 unidades",
+            context="Item crítico atual: TEC-777",
+        )
+    )
+
+    assert payload["params"]["product"] == "TEC-777"
+    mocked_record.assert_awaited_once_with(
+        tenant_id=tenant_id,
+        product_code="TEC-777",
+        type="EXIT",
+        quantity=3.0,
+    )
