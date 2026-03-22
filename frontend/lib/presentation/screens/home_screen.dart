@@ -80,27 +80,35 @@ class _HomeScreenState extends State<HomeScreen> {
     return Scaffold(
       extendBody: true,
       appBar: AppBar(
+        toolbarHeight: 60,
+        titleSpacing: 12,
         title: Column(
+          mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
               _titles[_currentIndex],
               style: TextStyle(
-                fontSize: 18,
+                fontSize: 17,
+                height: 1.05,
                 fontWeight: FontWeight.bold,
                 color: isDark ? AppColors.textHigh : AppColors.lgTextHigh,
               ),
             ),
+            const SizedBox(height: 2),
             Text(
               subtitles[_currentIndex],
               style: TextStyle(
-                fontSize: 11,
+                fontSize: 10,
+                height: 1.1,
                 color: isDark ? AppColors.textLow : AppColors.lgTextLow,
               ),
+              maxLines: 1,
               overflow: TextOverflow.ellipsis,
             ),
           ],
         ),
+        actionsPadding: const EdgeInsets.only(right: 8),
         actions: [
           // Toggle dark/light
           IconButton(
@@ -114,7 +122,7 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
           if (alertCount > 0)
             Padding(
-              padding: const EdgeInsets.only(right: 4),
+              padding: const EdgeInsets.only(right: 2),
               child: Stack(
                 clipBehavior: Clip.none,
                 children: [
@@ -154,7 +162,7 @@ class _HomeScreenState extends State<HomeScreen> {
           GestureDetector(
             onTap: () => _onTabTap(5),
             child: Padding(
-              padding: const EdgeInsets.only(right: 16),
+              padding: const EdgeInsets.only(right: 8),
               child: CircleAvatar(
                 radius: 18,
                 backgroundImage: NetworkImage(userProvider.profileImageUrl),
