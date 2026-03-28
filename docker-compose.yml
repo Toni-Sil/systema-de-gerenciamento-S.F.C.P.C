@@ -7,6 +7,7 @@
 #   docker compose down -v        # stop + remove volumes
 #
 # Services:
+#   frontend     — React/Vite (Nginx)
 #   api          — FastAPI backend
 #   db           — PostgreSQL 16
 #   rabbitmq     — RabbitMQ 3 (messaging / EDA)
@@ -16,6 +17,23 @@
 version: "3.9"
 
 services:
+
+  # --------------------------------------------------------------------------
+  # Frontend (React + Vite — served by Nginx)
+  # --------------------------------------------------------------------------
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: sfcpc_frontend
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    depends_on:
+      api:
+        condition: service_healthy
+    networks:
+      - sfcpc_net
 
   # --------------------------------------------------------------------------
   # API
@@ -33,7 +51,7 @@ services:
       ACCESS_TOKEN_EXPIRE_SECONDS: ${ACCESS_TOKEN_EXPIRE_SECONDS:-3600}
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
       RABBITMQ_URL: amqp://${RABBITMQ_USER:-guest}:${RABBITMQ_PASSWORD:-guest}@rabbitmq:5672/
-      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-*}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost}
       LLM_PROVIDER: ${LLM_PROVIDER:-mock}
     depends_on:
       db:
@@ -63,7 +81,7 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
     ports:
-      - "5432:5432"   # Remove in production — only needed for local dev access
+      - "5432:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-sfcpc}"]
       interval: 10s
@@ -85,8 +103,8 @@ services:
     volumes:
       - rabbitmq_data:/var/lib/rabbitmq
     ports:
-      - "5672:5672"    # AMQP
-      - "15672:15672"  # Management UI — http://localhost:15672
+      - "5672:5672"
+      - "15672:15672"
     healthcheck:
       test: ["CMD", "rabbitmq-diagnostics", "ping"]
       interval: 15s
