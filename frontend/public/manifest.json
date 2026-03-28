@@ -1,0 +1,12 @@
+{
+  "name": "S.F.C.P.C - Gestão de Estoque",
+  "short_name": "SFCPC",
+  "description": "Sistema de gerenciamento de estoque para produção de sofá-camas",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#18181b",
+  "theme_color": "#18181b",
+  "icons": [
+    { "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml" }
+  ]
+}

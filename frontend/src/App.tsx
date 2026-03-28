@@ -1,52 +1,40 @@
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Route, Routes } from "react-router-dom";
-import { Toaster } from "@/components/ui/toaster";
-import { TooltipProvider } from "@/components/ui/tooltip";
-import { ThemeProvider } from "@/hooks/use-theme";
-import { AppLayout } from "@/components/AppLayout";
-import Dashboard from "./pages/Dashboard";
-import Products from "./pages/Products";
-import Movements from "./pages/Movements";
-import StockBalance from "./pages/StockBalance";
-import Financial from "./pages/Financial";
-import Alerts from "./pages/Alerts";
-import Reports from "./pages/Reports";
-import SettingsPage from "./pages/Settings";
-import NotFound from "./pages/NotFound";
+import { QueryClientProvider } from '@tanstack/react-query';
+import { ReactQueryDevtools } from '@tanstack/react-query-devtools';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { Toaster } from 'sonner';
+import { queryClient } from '@/lib/queryClient';
+import { AppLayout } from '@/components/AppLayout';
+import Dashboard from '@/pages/Dashboard';
+import Products from '@/pages/Products';
+import StockBalance from '@/pages/StockBalance';
+import Movements from '@/pages/Movements';
+import Financial from '@/pages/Financial';
+import Reports from '@/pages/Reports';
+import Alerts from '@/pages/Alerts';
+import Settings from '@/pages/Settings';
+import NotFound from '@/pages/NotFound';
 
-const queryClient = new QueryClient({
-  defaultOptions: {
-    queries: {
-      // Base URL for all API calls — proxied to FastAPI via Vite
-      staleTime: 1000 * 60 * 5, // 5 minutes
-      retry: 1,
-    },
-  },
-});
-
-const App = () => (
-  <ThemeProvider>
+export default function App() {
+  return (
     <QueryClientProvider client={queryClient}>
-      <TooltipProvider>
-        <Toaster />
-        <BrowserRouter>
-          <AppLayout>
-            <Routes>
-              <Route path="/" element={<Dashboard />} />
-              <Route path="/produtos" element={<Products />} />
-              <Route path="/movimentacoes" element={<Movements />} />
-              <Route path="/saldo-estoque" element={<StockBalance />} />
-              <Route path="/financeiro" element={<Financial />} />
-              <Route path="/alertas" element={<Alerts />} />
-              <Route path="/relatorios" element={<Reports />} />
-              <Route path="/configuracoes" element={<SettingsPage />} />
-              <Route path="*" element={<NotFound />} />
-            </Routes>
-          </AppLayout>
-        </BrowserRouter>
-      </TooltipProvider>
+      <BrowserRouter>
+        <Routes>
+          <Route path="/" element={<AppLayout />}>
+            <Route index element={<Navigate to="/dashboard" replace />} />
+            <Route path="dashboard" element={<Dashboard />} />
+            <Route path="products" element={<Products />} />
+            <Route path="stock" element={<StockBalance />} />
+            <Route path="movements" element={<Movements />} />
+            <Route path="financial" element={<Financial />} />
+            <Route path="reports" element={<Reports />} />
+            <Route path="alerts" element={<Alerts />} />
+            <Route path="settings" element={<Settings />} />
+          </Route>
+          <Route path="*" element={<NotFound />} />
+        </Routes>
+      </BrowserRouter>
+      <Toaster richColors position="top-right" />
+      {import.meta.env.DEV && <ReactQueryDevtools initialIsOpen={false} />}
     </QueryClientProvider>
-  </ThemeProvider>
-);
-
-export default App;
+  );
+}
