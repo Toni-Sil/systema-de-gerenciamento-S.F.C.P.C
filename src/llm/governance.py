@@ -2,10 +2,16 @@
 
 Implementa Human-in-the-Loop para decisões sensíveis e detecção
 de padrões anômalos que possam indicar fraude ou erro operacional.
+
+Fix #21:
+- _action_counter agora é protegido por threading.Lock()
+- Thread-safe para ambiente single-worker (Uvicorn default)
+- Para multi-worker: substituir por Redis (ver comentários [REDIS_TODO])
 """
 from datetime import datetime, time
 from typing import Dict, Any
 import logging
+import threading
 
 logger = logging.getLogger(__name__)
 
@@ -20,8 +26,10 @@ class GovernanceRules:
     WORK_HOURS_END = time(22, 0)         # fim do expediente
     MAX_AUTONOMOUS_ACTIONS_PER_SESSION = 50
 
-    # Contador simples de ações por sessão (tenant_id -> count)
+    # [REDIS_TODO]: Em ambiente multi-worker, substituir por:
+    # await redis_client.incr(f"sfcpc:session:{tenant_id}:actions")  com EX=86400
     _action_counter: Dict[str, int] = {}
+    _counter_lock: threading.Lock = threading.Lock()  # fix #21
 
     @classmethod
     def evaluate_action(cls, intent: Dict[str, Any]) -> Dict[str, Any]:
@@ -75,13 +83,16 @@ class GovernanceRules:
         now_time = datetime.now().time()
         if not (cls.WORK_HOURS_START <= now_time <= cls.WORK_HOURS_END):
             logger.warning(
-                f"[GOVERNANÇA] Ação '{action}' fora do expediente ({now_time.strftime('%H:%M')}) — tenant={tenant_id}"
+                f"[GOVERNÂNÇA] Ação '{action}' fora do expediente ({now_time.strftime('%H:%M')}) — tenant={tenant_id}"
             )
             intent["warning"] = f"Ação executada fora do horário de expediente ({now_time.strftime('%H:%M')}). Registrado para auditoria."
 
-        # --- Regra 6: Limite de ações autônomas por sessão ---
-        cls._action_counter[tenant_id] = cls._action_counter.get(tenant_id, 0) + 1
-        if cls._action_counter[tenant_id] > cls.MAX_AUTONOMOUS_ACTIONS_PER_SESSION:
+        # --- Regra 6: Limite de ações autônomas por sessão (thread-safe) ---
+        with cls._counter_lock:  # fix #21
+            cls._action_counter[tenant_id] = cls._action_counter.get(tenant_id, 0) + 1
+            current_count = cls._action_counter[tenant_id]
+
+        if current_count > cls.MAX_AUTONOMOUS_ACTIONS_PER_SESSION:
             return cls._block(
                 intent,
                 f"Limite de {cls.MAX_AUTONOMOUS_ACTIONS_PER_SESSION} ações autônomas por sessão atingido. Sessão encerrada por segurança.",
@@ -93,7 +104,7 @@ class GovernanceRules:
     @classmethod
     def _block(cls, intent: Dict[str, Any], motivo: str, rule: str) -> Dict[str, Any]:
         """Marca a intenção como bloqueada e loga o evento."""
-        logger.warning(f"[GOVERNANÇA] Bloqueado — rule={rule} | {motivo}")
+        logger.warning(f"[GOVERNÂNÇA] Bloqueado — rule={rule} | {motivo}")
         intent["status"] = "needs_approval"
         intent["motivo"] = motivo
         intent["governance_rule"] = rule
@@ -102,4 +113,5 @@ class GovernanceRules:
     @classmethod
     def reset_session_counter(cls, tenant_id: str) -> None:
         """Reseta o contador de ações (chamar no logout/início de sessão)."""
-        cls._action_counter.pop(tenant_id, None)
+        with cls._counter_lock:  # fix #21
+            cls._action_counter.pop(tenant_id, None)
