@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SFCPC - Dashboard Preview</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        .sidebar-item:hover { background-color: #374151; }
+        .active { background-color: #1f2937; border-left: 4px solid #3b82f6; }
+    </style>
+</head>
+<body class="bg-gray-100 font-sans">
+    <div class="flex h-screen overflow-hidden">
+        <!-- Sidebar -->
+        <aside class="w-64 bg-gray-900 text-white flex-shrink-0">
+            <div class="p-6 text-2xl font-bold border-b border-gray-800">S.F.C.P.C</div>
+            <nav class="mt-6">
+                <a href="#" class="sidebar-item active block py-3 px-6 flex items-center"><i class="fas fa-home mr-3"></i> Dashboard</a>
+                <a href="#" class="sidebar-item block py-3 px-6 flex items-center text-gray-400"><i class="fas fa-box mr-3"></i> Produtos</a>
+                <a href="#" class="sidebar-item block py-3 px-6 flex items-center text-gray-400"><i class="fas fa-exchange-alt mr-3"></i> Movimentações</a>
+                <a href="#" class="sidebar-item block py-3 px-6 flex items-center text-gray-400"><i class="fas fa-chart-line mr-3"></i> Relatórios</a>
+            </nav>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="flex-1 overflow-y-auto p-8">
+            <header class="flex justify-between items-center mb-8">
+                <h1 class="text-3xl font-semibold text-gray-800">Dashboard</h1>
+                <div class="flex items-center space-x-4">
+                    <button class="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition"><i class="fas fa-plus mr-2"></i> Nova Entrada</button>
+                    <div class="w-10 h-10 bg-gray-300 rounded-full flex items-center justify-center"><i class="fas fa-user text-gray-600"></i></div>
+                </div>
+            </header>
+
+            <!-- KPIs -->
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+                <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+                    <p class="text-gray-500 text-sm">Total de Itens</p>
+                    <h3 class="text-2xl font-bold">1,284</h3>
+                </div>
+                <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+                    <p class="text-gray-500 text-sm">Entradas (Mês)</p>
+                    <h3 class="text-2xl font-bold text-green-600">45</h3>
+                </div>
+                <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+                    <p class="text-gray-500 text-sm">Saídas (Mês)</p>
+                    <h3 class="text-2xl font-bold text-red-600">12</h3>
+                </div>
+                <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+                    <p class="text-gray-500 text-sm">Status IA</p>
+                    <h3 class="text-2xl font-bold text-blue-600">Ativo</h3>
+                </div>
+            </div>
+
+            <!-- AI Movement Input Section (New Features) -->
+            <section class="bg-white rounded-xl shadow-md p-8 border border-blue-100 mb-8">
+                <div class="flex items-center mb-6">
+                    <div class="bg-blue-100 p-3 rounded-full mr-4"><i class="fas fa-robot text-blue-600 text-xl"></i></div>
+                    <div>
+                        <h2 class="text-xl font-bold text-gray-800">Entrada Inteligente (AI Movement)</h2>
+                        <p class="text-gray-500 text-sm">Fale, envie uma foto ou PDF para registrar movimentações automaticamente.</p>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <!-- Voice Input -->
+                    <div class="border-2 border-dashed border-gray-200 rounded-lg p-6 flex flex-col items-center justify-center hover:border-blue-400 transition cursor-pointer group">
+                        <i class="fas fa-microphone text-3xl text-gray-400 group-hover:text-blue-500 mb-4"></i>
+                        <span class="font-medium text-gray-600 group-hover:text-blue-700">Registrar por Voz</span>
+                        <p class="text-xs text-gray-400 mt-2 text-center">"Entrada de 50 metros de tecido suede cinza"</p>
+                    </div>
+
+                    <!-- Photo Input -->
+                    <div class="border-2 border-dashed border-gray-200 rounded-lg p-6 flex flex-col items-center justify-center hover:border-blue-400 transition cursor-pointer group">
+                        <i class="fas fa-camera text-3xl text-gray-400 group-hover:text-blue-500 mb-4"></i>
+                        <span class="font-medium text-gray-600 group-hover:text-blue-700">Tirar Foto / Anexar</span>
+                        <p class="text-xs text-gray-400 mt-2 text-center">Extração via Gemini Vision de Notas e Etiquetas</p>
+                    </div>
+
+                    <!-- PDF Input -->
+                    <div class="border-2 border-dashed border-gray-200 rounded-lg p-6 flex flex-col items-center justify-center hover:border-blue-400 transition cursor-pointer group">
+                        <i class="fas fa-file-pdf text-3xl text-gray-400 group-hover:text-blue-500 mb-4"></i>
+                        <span class="font-medium text-gray-600 group-hover:text-blue-700">Subir PDF de NFe</span>
+                        <p class="text-xs text-gray-400 mt-2 text-center">Processamento em lote de notas fiscais</p>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Recent Movements -->
+            <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+                <div class="px-6 py-4 border-b border-gray-50 flex justify-between items-center">
+                    <h2 class="font-bold text-gray-800">Movimentações Recentes</h2>
+                    <a href="#" class="text-blue-600 text-sm hover:underline">Ver todas</a>
+                </div>
+                <table class="w-full text-left">
+                    <thead class="bg-gray-50 text-xs text-gray-500 uppercase">
+                        <tr>
+                            <th class="px-6 py-3">Produto</th>
+                            <th class="px-6 py-3">Tipo</th>
+                            <th class="px-6 py-3">Quantidade</th>
+                            <th class="px-6 py-3">Data</th>
+                            <th class="px-6 py-3">Método</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-gray-100">
+                        <tr>
+                            <td class="px-6 py-4 font-medium">Tecido Suede Azul</td>
+                            <td class="px-6 py-4"><span class="px-2 py-1 bg-green-100 text-green-700 rounded text-xs">Entrada</span></td>
+                            <td class="px-6 py-4">25m</td>
+                            <td class="px-6 py-4 text-gray-500">Hoje, 10:15</td>
+                            <td class="px-6 py-4"><i class="fas fa-microphone text-blue-500 mr-2"></i> Voz</td>
+                        </tr>
+                        <tr>
+                            <td class="px-6 py-4 font-medium">Espuma D33</td>
+                            <td class="px-6 py-4"><span class="px-2 py-1 bg-red-100 text-red-700 rounded text-xs">Saída</span></td>
+                            <td class="px-6 py-4">10 blocos</td>
+                            <td class="px-6 py-4 text-gray-500">Ontem, 16:40</td>
+                            <td class="px-6 py-4"><i class="fas fa-keyboard text-gray-400 mr-2"></i> Manual</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </main>
+    </div>
+</body>
+</html>
