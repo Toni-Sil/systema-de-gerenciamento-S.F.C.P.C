@@ -66,23 +66,25 @@ export interface AgentChatResponse {
   reply: string;
 }
 
+export interface MovementData {
+  productName?: string;
+  type?: string;
+  quantity?: number;
+  batch?: string;
+  locationOrigin?: string;
+  locationDestiny?: string;
+  notes?: string;
+  operator?: string;
+}
+
 // ---------------------------------------------------------------------------
-// Token management (in-memory — no localStorage due to iframe sandboxing)
+// Token management (in-memory)
 // ---------------------------------------------------------------------------
 
 let _token: string | null = null;
-
-export function setToken(token: string) {
-  _token = token;
-}
-
-export function clearToken() {
-  _token = null;
-}
-
-export function getToken(): string | null {
-  return _token;
-}
+export function setToken(token: string) { _token = token; }
+export function clearToken() { _token = null; }
+export function getToken(): string | null { return _token; }
 
 // ---------------------------------------------------------------------------
 // Core fetch wrapper
@@ -96,21 +98,26 @@ async function apiFetch<T>(
     "Content-Type": "application/json",
     ...(options.headers as Record<string, string>),
   };
-
-  if (_token) {
-    headers["Authorization"] = `Bearer ${_token}`;
-  }
-
+  if (_token) { headers["Authorization"] = `Bearer ${_token}`; }
   const res = await fetch(`${BASE_URL}${path}`, { ...options, headers });
-
   if (!res.ok) {
     const error = await res.json().catch(() => ({ detail: res.statusText }));
     throw new Error(error.detail ?? `HTTP ${res.status}`);
   }
-
   if (res.status === 204) return undefined as T;
   return res.json() as Promise<T>;
 }
+
+// ---------------------------------------------------------------------------
+// Generic api object (used by AIMovementInput and other components)
+// ---------------------------------------------------------------------------
+
+export const api = {
+  post: <T = any>(path: string, body: unknown): Promise<T> =>
+    apiFetch<T>(`/api/v1${path}`, { method: "POST", body: JSON.stringify(body) }),
+  get: <T = any>(path: string): Promise<T> =>
+    apiFetch<T>(`/api/v1${path}`),
+};
 
 // ---------------------------------------------------------------------------
 // Auth
@@ -125,54 +132,32 @@ export async function login(data: LoginRequest): Promise<LoginResponse> {
   return result;
 }
 
-export async function register(data: {
-  tenant_id: string;
-  username: string;
-  password: string;
-  email?: string;
-}) {
-  return apiFetch("/auth/register", {
-    method: "POST",
-    body: JSON.stringify(data),
-  });
+export async function register(data: { tenant_id: string; username: string; password: string; email?: string; }) {
+  return apiFetch("/auth/register", { method: "POST", body: JSON.stringify(data) });
 }
 
 // ---------------------------------------------------------------------------
 // Inventory / Products
 // ---------------------------------------------------------------------------
 
-export async function listProducts(
-  limit = 50,
-  offset = 0
-): Promise<ProductSchema[]> {
-  return apiFetch<ProductSchema[]>(
-    `/api/v1/inventory?limit=${limit}&offset=${offset}`
-  );
+export async function listProducts(limit = 50, offset = 0): Promise<ProductSchema[]> {
+  return apiFetch<ProductSchema[]>(`/api/v1/inventory?limit=${limit}&offset=${offset}`);
 }
 
 export async function getProduct(code: string): Promise<ProductSchema> {
   return apiFetch<ProductSchema>(`/api/v1/inventory/${code}`);
 }
 
-export async function createProduct(
-  product: ProductSchema
-): Promise<ProductSchema> {
-  return apiFetch<ProductSchema>("/api/v1/inventory", {
-    method: "POST",
-    body: JSON.stringify(product),
-  });
+export async function createProduct(product: ProductSchema): Promise<ProductSchema> {
+  return apiFetch<ProductSchema>("/api/v1/inventory", { method: "POST", body: JSON.stringify(product) });
 }
 
 export async function deleteProduct(code: string): Promise<void> {
   return apiFetch<void>(`/api/v1/inventory/${code}`, { method: "DELETE" });
 }
 
-export async function updateBalance(
-  code: string,
-  delta: number,
-  reason = "Ajuste"
-): Promise<StockBalanceSchema> {
-  return apiFetch<StockBalanceSchema>(`/api/v1/inventory/${code}/balance`, {
+export async function updateBalance(code: string, delta: number, reason = "Ajuste"): Promise<void> {
+  return apiFetch<void>(`/api/v1/inventory/${code}/balance`, {
     method: "POST",
     body: JSON.stringify({ delta, reason }),
   });
@@ -182,34 +167,20 @@ export async function updateBalance(
 // Stock Movements
 // ---------------------------------------------------------------------------
 
-export async function listMovements(
-  limit = 50,
-  offset = 0
-): Promise<MovementSchema[]> {
-  return apiFetch<MovementSchema[]>(
-    `/movements?limit=${limit}&offset=${offset}`
-  );
+export async function listMovements(limit = 50, offset = 0): Promise<MovementSchema[]> {
+  return apiFetch<MovementSchema[]>(`/movements?limit=${limit}&offset=${offset}`);
 }
 
-export async function listBalances(
-  limit = 50,
-  offset = 0
-): Promise<StockBalanceSchema[]> {
-  return apiFetch<StockBalanceSchema[]>(
-    `/balances?limit=${limit}&offset=${offset}`
-  );
+export async function listBalances(limit = 50, offset = 0): Promise<StockBalanceSchema[]> {
+  return apiFetch<StockBalanceSchema[]>(`/balances?limit=${limit}&offset=${offset}`);
 }
 
 // ---------------------------------------------------------------------------
 // Financial
 // ---------------------------------------------------------------------------
 
-export async function getFinancialSummary(
-  period = "30d"
-): Promise<FinancialSummarySchema> {
-  return apiFetch<FinancialSummarySchema>(
-    `/api/v1/financial/summary?period=${period}`
-  );
+export async function getFinancialSummary(period = "30d"): Promise<FinancialSummarySchema> {
+  return apiFetch<FinancialSummarySchema>(`/api/v1/financial/summary?period=${period}`);
 }
 
 export async function getFinancialTransactions(period = "30d") {
@@ -220,13 +191,27 @@ export async function getFinancialTransactions(period = "30d") {
 // LLM Agent
 // ---------------------------------------------------------------------------
 
-export async function chatWithAgent(
-  message: string
-): Promise<AgentChatResponse> {
+export async function chatWithAgent(message: string): Promise<AgentChatResponse> {
   return apiFetch<AgentChatResponse>("/api/v1/agent/chat", {
     method: "POST",
     body: JSON.stringify({ message }),
   });
+}
+
+// ---------------------------------------------------------------------------
+// AI Input (voice, image, PDF) — consumed by AIMovementInput component
+// ---------------------------------------------------------------------------
+
+export async function transcribeAudio(audio: string, mimeType = "audio/webm"): Promise<{ transcript: string }> {
+  return api.post("/ai/transcribe-audio", { audio, mimeType });
+}
+
+export async function processMovementAI(
+  type: "voice" | "image" | "pdf",
+  content: string,
+  mimeType?: string
+): Promise<{ movement: MovementData }> {
+  return api.post("/ai/process-movement", { type, content, mimeType });
 }
 
 // ---------------------------------------------------------------------------
