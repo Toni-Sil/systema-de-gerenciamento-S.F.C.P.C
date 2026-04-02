@@ -1,7 +1,11 @@
-"""Routes for AI-powered movement input: voice transcription, image and PDF extraction.
-Adapted from sfcpc-inventory-hub Supabase Edge Functions to FastAPI + Gemini.
+"""Routes para input via IA: transcrição de áudio, extração de imagem e PDF.
+
+Fixes:
+- #17: Corrigido import `from src.auth.dependencies` (não existia) para `auth.jwt_handler`
+- #17: Router agora é registrado em main.py
+- #20: Catálogo de produtos removido do System Prompt estático;
+        injetado dinamicamente por tenant a cada requisição
 """
-import base64
 import json
 import os
 from typing import Literal, Optional
@@ -10,18 +14,22 @@ import httpx
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 
-from src.auth.dependencies import get_current_user
+from auth.jwt_handler import verify_jwt_token
+from auth.tenant_context import get_tenant_id
 
 router = APIRouter(prefix="/ai", tags=["AI Input"])
 
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
 GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent"
 
-SYSTEM_PROMPT = """Voce e um assistente de gerenciamento de estoque da fabrica de estofados S.F.C.P.C.
+# System Prompt base — sem lista de produtos hardcoded
+# O catálogo real do tenant é injetado dinamicamente em cada requisição
+BASE_SYSTEM_PROMPT = """Voce e um assistente de gerenciamento de estoque da fabrica de estofados S.F.C.P.C.
 Sua tarefa e extrair informacoes de movimentacoes de estoque a partir de texto (voz transcrita), imagens ou PDFs.
 
 Extraia os seguintes campos quando disponiveis:
 - productName: nome ou descricao do produto
+- productCode: codigo do produto (ex: TEC-001)
 - type: tipo de movimentacao (Entrada, Saida, Transferencia, Ajuste)
 - quantity: quantidade movimentada (numero positivo)
 - batch: numero do lote
@@ -29,20 +37,6 @@ Extraia os seguintes campos quando disponiveis:
 - locationDestiny: local de destino
 - notes: observacoes adicionais
 - operator: nome do operador
-
-Produtos conhecidos:
-- TEC-001: Tecido Suede Cinza
-- TEC-002: Tecido Linho Bege
-- TEC-003: Tecido Chenille Marrom
-- ESP-001: Espuma D33 10cm
-- ESP-002: Espuma D45 15cm
-- ESP-003: Espuma D28 8cm
-- MAD-001: Pinus Tratado 2m
-- MAD-002: MDF 15mm 2,75x1,84
-- MAD-003: Compensado 10mm
-- FER-001: Dobradica Sofa-Cama
-- FER-002: Mola Espiral 12cm
-- FER-003: Parafuso Sextavado M8
 
 Responda APENAS com o JSON, sem markdown ou explicacoes."""
 
@@ -68,6 +62,7 @@ class ProcessMovementRequest(BaseModel):
 
 class MovementData(BaseModel):
     productName: Optional[str] = None
+    productCode: Optional[str] = None
     type: Optional[str] = None
     quantity: Optional[float] = None
     batch: Optional[str] = None
@@ -93,17 +88,33 @@ def _gemini_url() -> str:
     return f"{GEMINI_URL}?key={GEMINI_API_KEY}"
 
 
+async def _get_tenant_catalog() -> str:
+    """Busca o catálogo de produtos real do tenant atual para injetar no prompt."""
+    tenant_id = get_tenant_id()
+    if not tenant_id:
+        return ""
+    try:
+        from llm.tools import LLMTools
+        resp = json.loads(await LLMTools.search_product(tenant_id=tenant_id, query=""))
+        if resp.get("status") == "success" and resp.get("data"):
+            lines = [f"- {p['code']}: {p['description']}" for p in resp["data"][:50]]  # max 50 no prompt
+            return "\n\nCatálogo de produtos do tenant:\n" + "\n".join(lines)
+    except Exception:
+        pass
+    return ""
+
+
 async def _call_gemini(payload: dict) -> dict:
-    """Call Gemini REST API and return parsed JSON response."""
+    """Chama a API REST do Gemini e retorna o JSON de resposta."""
     if not GEMINI_API_KEY:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="GEMINI_API_KEY not configured",
+            detail="GEMINI_API_KEY not configured. Set it in .env",
         )
     async with httpx.AsyncClient(timeout=60) as client:
         resp = await client.post(_gemini_url(), headers=_gemini_headers(), json=payload)
         if resp.status_code == 429:
-            raise HTTPException(status_code=429, detail="Limite de requisicoes excedido.")
+            raise HTTPException(status_code=429, detail="Limite de requisicoes Gemini excedido.")
         if not resp.is_success:
             raise HTTPException(
                 status_code=status.HTTP_502_BAD_GATEWAY,
@@ -119,9 +130,9 @@ async def _call_gemini(payload: dict) -> dict:
 @router.post("/transcribe-audio", response_model=TranscribeResponse)
 async def transcribe_audio(
     body: TranscribeRequest,
-    current_user=Depends(get_current_user),
+    _: dict = Depends(verify_jwt_token),
 ):
-    """Transcribe a base64-encoded audio blob using Gemini multimodal."""
+    """Transcreve um blob de áudio base64 usando Gemini multimodal."""
     payload = {
         "contents": [
             {
@@ -147,19 +158,25 @@ async def transcribe_audio(
 @router.post("/process-movement", response_model=ProcessMovementResponse)
 async def process_movement(
     body: ProcessMovementRequest,
-    current_user=Depends(get_current_user),
+    _: dict = Depends(verify_jwt_token),
 ):
-    """Extract inventory movement data from voice text, image or PDF using Gemini."""
+    """Extrai dados de movimentação de voz, imagem ou PDF via Gemini.
+    O catálogo de produtos é carregado dinamicamente do banco por tenant.
+    """
+    # Catálogo dinâmico do tenant (substitui lista hardcoded)
+    catalog_context = await _get_tenant_catalog()
+    system_prompt = BASE_SYSTEM_PROMPT + catalog_context
+
     if body.type == "voice":
         parts = [
-            {"text": SYSTEM_PROMPT},
+            {"text": system_prompt},
             {"text": f'Extraia os dados de movimentacao desta transcricao de voz:\n\n"{body.content}"'},
         ]
     elif body.type in ("image", "pdf"):
         label = "documento PDF" if body.type == "pdf" else "imagem"
         mime = body.mimeType or ("application/pdf" if body.type == "pdf" else "image/jpeg")
         parts = [
-            {"text": SYSTEM_PROMPT},
+            {"text": system_prompt},
             {"text": f"Extraia os dados de movimentacao de estoque deste {label}."},
             {
                 "inlineData": {
@@ -181,6 +198,6 @@ async def process_movement(
     try:
         movement_dict = json.loads(raw)
     except json.JSONDecodeError:
-        raise HTTPException(status_code=422, detail="Nao foi possivel extrair dados da resposta da IA")
+        raise HTTPException(status_code=422, detail="Nao foi possivel extrair dados estruturados da resposta da IA")
 
-    return ProcessMovementResponse(movement=MovementData(**movement_dict))
+    return ProcessMovementResponse(movement=MovementData(**{k: v for k, v in movement_dict.items() if k in MovementData.model_fields}))
