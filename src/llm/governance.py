@@ -1,37 +1,117 @@
+"""Motor de Governança para ações autônomas do Agente IA.
+
+Implementa Human-in-the-Loop para decisões sensíveis e detecção
+de padrões anômalos que possam indicar fraude ou erro operacional.
+
+Fix #21:
+- _action_counter agora é protegido por threading.Lock()
+- Thread-safe para ambiente single-worker (Uvicorn default)
+- Para multi-worker: substituir por Redis (ver comentários [REDIS_TODO])
+"""
+from datetime import datetime, time
 from typing import Dict, Any
 import logging
+import threading
 
 logger = logging.getLogger(__name__)
 
+
 class GovernanceRules:
-    """
-    Motor de Governança para ações autônomas do Agente IA.
-    Implementa o "Human-in-the-Loop" (Aprovação Manual) para decisões sensíveis.
-    """
-    
-    HIGH_VALUE_THRESHOLD = 5000.0  # R$ 5.000,00
+
+    # Limites configuráveis
+    HIGH_VALUE_THRESHOLD = 5_000.0       # R$ para despesas autônomas
+    BULK_EXIT_THRESHOLD = 1_000.0        # unidades para saída em massa
+    BULK_ENTRY_THRESHOLD = 5_000.0       # unidades para entrada em massa
+    WORK_HOURS_START = time(6, 0)        # início do expediente
+    WORK_HOURS_END = time(22, 0)         # fim do expediente
+    MAX_AUTONOMOUS_ACTIONS_PER_SESSION = 50
+
+    # [REDIS_TODO]: Em ambiente multi-worker, substituir por:
+    # await redis_client.incr(f"sfcpc:session:{tenant_id}:actions")  com EX=86400
+    _action_counter: Dict[str, int] = {}
+    _counter_lock: threading.Lock = threading.Lock()  # fix #21
 
     @classmethod
     def evaluate_action(cls, intent: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Avalia se a intenção parseada pela IA possui riscos que exigem intervenção humana.
+        Avalia se a intenção possui riscos que exigem intervenção humana.
+        Aplica todas as regras em sequência; para na primeira violação.
         """
         action = intent.get("action")
-        params = intent.get("params", {})
-        
+        params = intent.get("params", {}) or {}
+        tenant_id = str(intent.get("tenant_id", "unknown"))
+
+        # --- Regra 1: Despesa de Alto Valor ---
         if action == "RegisterExpense":
             value = params.get("value", 0.0)
             if value >= cls.HIGH_VALUE_THRESHOLD:
-                logger.warning(f" [GOVERNANÇA] Ação Bloqueada: Despesa de Alto Valor (R$ {value}). Exigindo aprovação Humana.")
-                intent["status"] = "needs_approval"
-                intent["motivo"] = "Ação bloqueada pelas políticas de Governança corporativa (Valor Superior ao Limite Autônomo)."
-                
+                return cls._block(
+                    intent,
+                    f"Despesa de alto valor (R$ {value:,.2f}) acima do limite autônomo de R$ {cls.HIGH_VALUE_THRESHOLD:,.2f}. Aguardando aprovação do gestor.",
+                    rule="HIGH_VALUE_EXPENSE",
+                )
+
+        # --- Regra 2: Saída em Massa ---
         elif action == "Exit":
-            # Example: Exiting more than 1000 units of anything requires manager approval
             qty = params.get("quantity", 0)
-            if qty >= 1000:
-                logger.warning(f" [GOVERNANÇA] Ação Bloqueada: Movimentação Atípica (Qtd {qty}). Exigindo aprovação Humana.")
-                intent["status"] = "needs_approval"
-                intent["motivo"] = "Detecção de fraude ou movimentação atípica em massa."
-                
+            if qty >= cls.BULK_EXIT_THRESHOLD:
+                return cls._block(
+                    intent,
+                    f"Saída atípica de {qty} unidades. Suspeita de fraude ou erro operacional.",
+                    rule="BULK_EXIT",
+                )
+
+        # --- Regra 3: Entrada em Massa ---
+        elif action == "Entry":
+            qty = params.get("quantity", 0)
+            if qty >= cls.BULK_ENTRY_THRESHOLD:
+                return cls._block(
+                    intent,
+                    f"Entrada atípica de {qty} unidades. Requer confirmação do gestor.",
+                    rule="BULK_ENTRY",
+                )
+
+        # --- Regra 4: Ajuste direto de estoque (sempre exige aprovação) ---
+        elif action == "Adjustment":
+            return cls._block(
+                intent,
+                "Ajuste direto de saldo requer aprovação obrigatória do MANAGER ou ADMIN.",
+                rule="MANDATORY_ADJUSTMENT_APPROVAL",
+            )
+
+        # --- Regra 5: Operação fora do horário de expediente ---
+        now_time = datetime.now().time()
+        if not (cls.WORK_HOURS_START <= now_time <= cls.WORK_HOURS_END):
+            logger.warning(
+                f"[GOVERNÂNÇA] Ação '{action}' fora do expediente ({now_time.strftime('%H:%M')}) — tenant={tenant_id}"
+            )
+            intent["warning"] = f"Ação executada fora do horário de expediente ({now_time.strftime('%H:%M')}). Registrado para auditoria."
+
+        # --- Regra 6: Limite de ações autônomas por sessão (thread-safe) ---
+        with cls._counter_lock:  # fix #21
+            cls._action_counter[tenant_id] = cls._action_counter.get(tenant_id, 0) + 1
+            current_count = cls._action_counter[tenant_id]
+
+        if current_count > cls.MAX_AUTONOMOUS_ACTIONS_PER_SESSION:
+            return cls._block(
+                intent,
+                f"Limite de {cls.MAX_AUTONOMOUS_ACTIONS_PER_SESSION} ações autônomas por sessão atingido. Sessão encerrada por segurança.",
+                rule="SESSION_LIMIT_EXCEEDED",
+            )
+
         return intent
+
+    @classmethod
+    def _block(cls, intent: Dict[str, Any], motivo: str, rule: str) -> Dict[str, Any]:
+        """Marca a intenção como bloqueada e loga o evento."""
+        logger.warning(f"[GOVERNÂNÇA] Bloqueado — rule={rule} | {motivo}")
+        intent["status"] = "needs_approval"
+        intent["motivo"] = motivo
+        intent["governance_rule"] = rule
+        return intent
+
+    @classmethod
+    def reset_session_counter(cls, tenant_id: str) -> None:
+        """Reseta o contador de ações (chamar no logout/início de sessão)."""
+        with cls._counter_lock:  # fix #21
+            cls._action_counter.pop(tenant_id, None)
