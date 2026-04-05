@@ -15,6 +15,7 @@ import {
 } from 'recharts';
 import { useDashboard } from '@/hooks/useDashboard';
 import { formatCurrency } from '@/lib/utils';
+import { AIInsightCard } from '@/components/AIInsightCard';
 
 const MOCK_TREND = [
   { date: 'Jan', value: 42000 },
@@ -73,6 +74,8 @@ export default function Dashboard() {
         <h1 className="text-2xl font-bold">Dashboard</h1>
         <p className="text-muted-foreground text-sm">Visão geral do sistema</p>
       </div>
+
+      <AIInsightCard />
 
       {/* KPIs */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">

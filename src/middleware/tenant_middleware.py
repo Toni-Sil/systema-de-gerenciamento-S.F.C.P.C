@@ -27,10 +27,11 @@ class TenantMiddleware(BaseHTTPMiddleware):
         request_id = str(uuid.uuid4())
         request.state.request_id = request_id
 
-        if request.url.path in _PUBLIC_PATHS:
+        if request.url.path in _PUBLIC_PATHS or request.method == "OPTIONS":
             response = await call_next(request)
             response.headers["X-Request-ID"] = request_id
             return response
+
 
         auth_header = request.headers.get("Authorization")
 

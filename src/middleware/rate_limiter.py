@@ -42,7 +42,7 @@ class RateLimiterMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         tenant_id = get_tenant_id()
 
-        if tenant_id is None:
+        if tenant_id is None or request.method == "OPTIONS":
             return await call_next(request)
 
         key = str(tenant_id)

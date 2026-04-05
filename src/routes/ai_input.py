@@ -158,46 +158,49 @@ async def transcribe_audio(
 @router.post("/process-movement", response_model=ProcessMovementResponse)
 async def process_movement(
     body: ProcessMovementRequest,
-    _: dict = Depends(verify_jwt_token),
+    tenant_id: UUID = Depends(get_validated_tenant_id),
 ):
-    """Extrai dados de movimentação de voz, imagem ou PDF via Gemini.
-    O catálogo de produtos é carregado dinamicamente do banco por tenant.
     """
-    # Catálogo dinâmico do tenant (substitui lista hardcoded)
-    catalog_context = await _get_tenant_catalog()
-    system_prompt = BASE_SYSTEM_PROMPT + catalog_context
-
-    if body.type == "voice":
-        parts = [
-            {"text": system_prompt},
-            {"text": f'Extraia os dados de movimentacao desta transcricao de voz:\n\n"{body.content}"'},
-        ]
-    elif body.type in ("image", "pdf"):
-        label = "documento PDF" if body.type == "pdf" else "imagem"
-        mime = body.mimeType or ("application/pdf" if body.type == "pdf" else "image/jpeg")
-        parts = [
-            {"text": system_prompt},
-            {"text": f"Extraia os dados de movimentacao de estoque deste {label}."},
-            {
-                "inlineData": {
-                    "mimeType": mime,
-                    "data": body.content,
-                }
-            },
-        ]
-    else:
-        raise HTTPException(status_code=400, detail="type deve ser voice, image ou pdf")
-
-    payload = {
-        "contents": [{"role": "user", "parts": parts}],
-        "generationConfig": {"temperature": 0.1, "responseMimeType": "application/json"},
-    }
-    data = await _call_gemini(payload)
-    raw = data["candidates"][0]["content"]["parts"][0]["text"]
-
-    try:
-        movement_dict = json.loads(raw)
-    except json.JSONDecodeError:
-        raise HTTPException(status_code=422, detail="Nao foi possivel extrair dados estruturados da resposta da IA")
-
-    return ProcessMovementResponse(movement=MovementData(**{k: v for k, v in movement_dict.items() if k in MovementData.model_fields}))
+    Novo fluxo unificado via AgentOrchestrator (Multimodal).
+    Recebe mídia (voz, imagem, pdf) e extrai dados estruturados.
+    """
+    from llm.agent import AgentOrchestrator
+    from db.session import get_session
+    import base64
+    
+    async with get_session() as session:
+        if body.type == "voice":
+            # Caso seja voz, o texto já foi transcrito pelo frontend ou transcreva-audio
+            result_str = await AgentOrchestrator.process_message(tenant_id, body.content, session)
+        else:
+            # Caso seja imagem ou PDF, usamos o processamento multimodal (Vision)
+            try:
+                media_bytes = base64.b64decode(body.content)
+            except Exception:
+                raise HTTPException(status_code=400, detail="Conteúdo base64 inválido.")
+                
+            result_str = await AgentOrchestrator.process_multimodal(
+                tenant_id=tenant_id,
+                message="Analise este documento e extraia detalhes logísticos ou financeiros.",
+                media_bytes=media_bytes,
+                mime_type=body.mimeType or ("application/pdf" if body.type == "pdf" else "image/jpeg"),
+                session=session
+            )
+            
+        try:
+            result_json = json.loads(result_str)
+        except json.JSONDecodeError:
+            raise HTTPException(status_code=422, detail="Erro ao decodificar resposta da IA.")
+            
+        # Mapeamento para o Schema de Resposta do Frontend
+        params = result_json.get("params", {})
+        action = result_json.get("action", "Unknown")
+        
+        movement = MovementData(
+            productCode=params.get("product"),
+            type="Entrada" if action == "Entry" else "Saída" if action == "Exit" else action,
+            quantity=params.get("quantity"),
+            notes=result_json.get("motivo") or params.get("supplier"),
+        )
+        
+        return ProcessMovementResponse(movement=movement)

@@ -1,107 +1,184 @@
+import os
 import json
+import logging
 from uuid import UUID
+from typing import List, Optional, Dict, Any
+
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
+from db.orm_models import ProductORM
 from llm.tools import LLMTools
-from auth.tenant_context import get_tenant_id
+from llm.parser import LLMOuputValidator
+from llm.governance import GovernanceRules
+from llm.providers import get_llm_provider
+
+logger = logging.getLogger(__name__)
 
 class AgentOrchestrator:
     """
-    Simulação do Agente LangChain.
-    No MVP, substitui chamadas externas de LLM por lógicas de regex/match determinísticas
-    para validar o ciclo de "Function Calling" isolando as APIs.
-    (O Llama-3/Gemma real pode ser 'plugado' apenas trocando a engine interna).
-    """
-
-    SYSTEM_PROMPT = """Você é um assistente IA especialista em logística e gestão de estoque multi-tenant.
-    Sua função é interpretar as intenções do usuário e retorná-las ESTRITAMENTE em formato JSON.
-    Regras de Segurança: O tenant_id fornecido pelo orquestrador DEVE ser mantido isolado e em sigilo matemático nas transações (OWASP).
-    Saída Estrita: RESPONDA APENAS com o JSON da transação correspondente (ex: {"action": "CadastrarProduto", "params": {...}}). ZERO texto explicativo fora do JSON.
-    Explicabilidade: Em caso de falha nas regras de negócio da transação, adicione um campo "motivo" na sua resposta estruturada.
+    Orquestrador do Agente IA - Multiprovedor (Agnóstico).
+    Refatorado para suportar Gemini, Ollama e outros através de um sistema de Provedores.
     """
 
     @staticmethod
-    async def process_message(tenant_id: UUID, message: str) -> str:
+    async def get_system_context(tenant_id: UUID, session: AsyncSession) -> str:
+        """Busca o catálogo de produtos real para injetar no prompt do modelo."""
+        try:
+            result = await session.execute(
+                select(ProductORM).where(
+                    ProductORM.tenant_id == tenant_id,
+                    ProductORM.is_active == True
+                )
+            )
+            products = result.scalars().all()
+            
+            if not products:
+                return "Atenção: Não há produtos cadastrados para este estoque."
+            
+            hint = "CATÁLOGO DE PRODUTOS ATUALIZADO (Use estes códigos exatos):\n"
+            for p in products:
+                hint += f"- Descrição: {p.description} | Código: {p.code} | Unidade: {p.unit}\n"
+            return hint
+        except Exception as e:
+            logger.error(f"Erro ao buscar contexto do catálogo: {e}")
+            return "Erro ao sincronizar catálogo."
+
+    @staticmethod
+    async def process_message(tenant_id: UUID, message: str, session: AsyncSession) -> str:
         """
-        Recebe a intenção no prompt de usuário, "interpreta" o tool call
-        e retorna em JSON formatado.
+        Interpreta a mensagem do usuário usando o Provedor de LLM configurado.
         """
-        from llm.parser import LLMOuputValidator
-        from llm.governance import GovernanceRules
+        # 1. Obter Catalogo Dinamico
+        catalog_hint = await AgentOrchestrator.get_system_context(tenant_id, session)
+
+        # 2. Obter Provedor de IA (Gemini, Ollama, OpenAI, etc)
+        provider = await get_llm_provider(tenant_id, session)
         
-        msg_lower = message.lower()
-        
-        # Função auxiliar interna para garantir validação
-        def parse_and_govern(raw_json_str: str) -> str:
-            validated_intent = LLMOuputValidator.validate_and_parse(raw_json_str)
+        try:
+            system_instruction = (
+                "Você é o Especialista Logístico do SFC-PC (Smart System). "
+                f"Contexto do Tenant ID: {tenant_id}\n\n"
+                f"{catalog_hint}\n"
+                "Regras de Ouro:\n"
+                "1. Identifique o código do produto no catálogo acima.\n"
+                "2. Retorne OBRIGATORIAMENTE um JSON puro (nada mais).\n"
+                "3. Formatos válidos:\n"
+                "   - Entrada: {'action': 'Entry', 'params': {'product': 'CODIGO', 'quantity': 10}}\n"
+                "   - Saída: {'action': 'Exit', 'params': {'product': 'CODIGO', 'quantity': 5}}\n"
+                "   - Saldo/Estoque: {'action': 'InventoryStatus', 'params': {}}\n"
+                "   - Despesa: {'action': 'RegisterExpense', 'params': {'value': 100.0, 'supplier': 'Nome'}}\n"
+            )
+
+            # 3. Gerar Resposta via Provedor Selecionado
+            raw_text = await provider.process_prompt(system_instruction, message)
+            
+            # 4. Validar JSON e Aplicar Governança
+            validated_intent = LLMOuputValidator.validate_and_parse(raw_text)
             governed_intent = GovernanceRules.evaluate_action(validated_intent)
-            return json.dumps(governed_intent)
-
-        
-        # Simula extração de intenção: Movimentação (Entrada/Saída)
-        if "entrad" in msg_lower or "receb" in msg_lower:
-            q_str = [word for word in msg_lower.split() if word.isdigit()]
-            qty = float(q_str[0]) if q_str else 1.0
             
-            tool_resp = await LLMTools.record_movement(
-                tenant_id=tenant_id, 
-                product_code="TEST-001", 
-                type="ENTRY", 
-                quantity=qty
-            )
-            resp_dict = json.loads(tool_resp)
-            if resp_dict["status"] == "success":
-                return parse_and_govern(json.dumps({"action": "Entry", "params": {"product": "TEST-001", "quantity": qty}, "status": "success", "new_balance": resp_dict['new_balance']}))
-            else:
-                return parse_and_govern(json.dumps({"action": "Entry", "params": {"product": "TEST-001", "quantity": qty}, "status": "failed", "motivo": resp_dict['message']}))
-
-        elif "saíd" in msg_lower or "said" in msg_lower or "vend" in msg_lower:
-            q_str = [word for word in msg_lower.split() if word.isdigit()]
-            qty = float(q_str[0]) if q_str else 1.0
+            # 5. Executar Ação no Banco de Dados
+            action = governed_intent.get("action")
+            status = governed_intent.get("status")
+            params = governed_intent.get("params", {}) or {}
             
-            tool_resp = await LLMTools.record_movement(
-                tenant_id=tenant_id, 
-                product_code="TEST-001", 
-                type="EXIT", 
-                quantity=qty
-            )
-            resp_dict = json.loads(tool_resp)
-            if resp_dict["status"] == "success":
-                return parse_and_govern(json.dumps({"action": "Exit", "params": {"product": "TEST-001", "quantity": qty}, "status": "success", "new_balance": resp_dict['new_balance']}))
-            else:
-                return parse_and_govern(json.dumps({"action": "Exit", "params": {"product": "TEST-001", "quantity": qty}, "status": "failed", "motivo": resp_dict['message']}))
+            if status == "success":
+                if action == "Entry":
+                    tool_resp = await LLMTools.record_movement(
+                        tenant_id, params.get("product"), "ENTRY", float(params.get("quantity", 1)), session
+                    )
+                    return AgentOrchestrator._merge_tool_resp(governed_intent, tool_resp)
                 
-        # Simula extração de OCR de Recibos/Notas (Fase Financeira)
-        elif "invoice" in msg_lower or "ocr" in msg_lower or "nota fiscal" in msg_lower or "fornecedor:" in msg_lower:
-            # We simulate the LLM extracting JSON out of the OCR block exactly as generated by mock_receipt.png
-            # If it's the domain receipt:
-            if "tecidos finos" in msg_lower or "2.300" in msg_lower:
-                return parse_and_govern(json.dumps({
-                    "action": "RegisterExpense",
-                    "params": {
-                        "value": 2300.0,
-                        "category": "Matéria Prima",
-                        "date": "2026-03-12",
-                        "supplier": "TECIDOS FINOS LTDA"
-                    },
-                    "status": "success"
-                }))
+                elif action == "Exit":
+                    tool_resp = await LLMTools.record_movement(
+                        tenant_id, params.get("product"), "EXIT", float(params.get("quantity", 1)), session
+                    )
+                    return AgentOrchestrator._merge_tool_resp(governed_intent, tool_resp)
+                
+                elif action == "InventoryStatus":
+                    tool_resp = await LLMTools.get_inventory_status(tenant_id, session)
+                    return AgentOrchestrator._merge_tool_resp(governed_intent, tool_resp)
+
+            return json.dumps(governed_intent, ensure_ascii=False)
+
+        except Exception as e:
+            logger.error(f"Erro no AgenteOrchestrator via {type(provider).__name__}: {e}")
+            return json.dumps({
+                "action": "SystemError", 
+                "status": "failed", 
+                "motivo": f"Indisponibilidade temporária na IA: {str(e)}"
+            }, ensure_ascii=False)
+
+    @staticmethod
+    async def process_multimodal(
+        tenant_id: UUID, 
+        message: str, 
+        media_bytes: bytes, 
+        mime_type: str, 
+        session: AsyncSession
+    ) -> str:
+        """
+        Analisa mídia (fotos de documentos, notas fiscais, prints) e extrai intenções logísticas.
+        """
+        # 1. Obter Catalogo e Provedor
+        catalog_hint = await AgentOrchestrator.get_system_context(tenant_id, session)
+        provider = await get_llm_provider(tenant_id, session)
+
+        # 2. Instrução de Especialista em Visão de Documentos
+        system_instruction = (
+            "Você é o Especialista em Visão Computacional do SFC-PC. "
+            "Sua tarefa é ler este documento/imagem e extrair movimentações de estoque ou faturas financeiras.\n\n"
+            f"{catalog_hint}\n"
+            "Retorne APENAS o JSON da intenção:\n"
+            "- Se for uma Nota Fiscal de compra: {'action': 'RegisterExpense', 'params': {'value': 0.0, 'supplier': '...'}}\n"
+            "- Se for um canhoto de entrega: {'action': 'Entry', 'params': {'product': '...', 'quantity': 0}}\n"
+        )
+
+        try:
+            raw_text = await provider.process_multimodal(system_instruction, message, media_bytes, mime_type)
+            validated_intent = LLMOuputValidator.validate_and_parse(raw_text)
+            
+            # Aqui não executamos a ferramenta automaticamente (aguardamos confirmação do usuário no UI)
+            # Mas aplicamos governança para avisar sobre riscos
+            governed_intent = GovernanceRules.evaluate_action(validated_intent)
+            return json.dumps(governed_intent, ensure_ascii=False)
+        except Exception as e:
+            logger.error(f"Erro no processamento Multimodal: {e}")
+            return json.dumps({"action": "VisionError", "status": "failed", "motivo": str(e)}, ensure_ascii=False)
+
+    @staticmethod
+    async def generate_dashboard_insight(tenant_id: UUID, session: AsyncSession) -> str:
+        """Gera um insight rápido utilizando o provedor configurado."""
+        from data.gold_service import GoldLayerService
+        summary = await GoldLayerService.get_inventory_summary(tenant_id, session)
+        
+        low_stock_items = [s for s in summary if s['is_low_stock']]
+        
+        prompt = (
+            f"Gerencie: {len(summary)} produtos, {len(low_stock_items)} em falta.\n"
+            f"Críticos: {', '.join([i['description'] for i in low_stock_items[:2]])}.\n"
+            "Gere uma frase de insight profissional sobre reposição. Seja ultra breve."
+        )
+
+        try:
+            provider = await get_llm_provider(tenant_id, session)
+            return await provider.generate_insight(prompt)
+        except:
+            return "Estoque sincronizado. Verifique itens críticos."
+
+    @staticmethod
+    def _merge_tool_resp(intent: Dict[str, Any], tool_json_str: str) -> str:
+        """Une a intenção inicial com o resultado real da execução da ferramenta."""
+        try:
+            tool_data = json.loads(tool_json_str)
+            if tool_data.get("status") == "success":
+                intent["data"] = tool_data.get("data")
+                intent["new_balance"] = tool_data.get("new_balance")
+                intent["motivo"] = tool_data.get("message")
+                intent["status"] = "success"
             else:
-                return parse_and_govern(json.dumps({
-                    "action": "RegisterExpense",
-                    "params": {
-                        "value": 150.0,
-                        "category": "Logística",
-                        "date": "2026-03-12",
-                        "supplier": "Transporte S/A"
-                    },
-                    "status": "success"
-                }))
-            
-        # Simula extração de intenção: Status do Estoque
-        elif "estoque" in msg_lower or "resumo" in msg_lower:
-            tool_resp = await LLMTools.get_inventory_status(tenant_id=tenant_id)
-            resp_dict = json.loads(tool_resp)
-            items = resp_dict.get("data", [])
-            return parse_and_govern(json.dumps({"action": "InventoryStatus", "status": "success", "data": items}))
-            
-        else:
-            return parse_and_govern(json.dumps({"action": "Unknown", "status": "failed", "motivo": "Comando não reconhecido pelo vocabulário de logística e estoque da plataforma."}))
+                intent["status"] = "failed"
+                intent["motivo"] = tool_data.get("message")
+            return json.dumps(intent, ensure_ascii=False)
+        except Exception:
+            return json.dumps(intent, ensure_ascii=False)
+

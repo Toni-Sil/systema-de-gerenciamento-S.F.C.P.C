@@ -114,9 +114,9 @@ async function apiFetch<T>(
 
 export const api = {
   post: <T = any>(path: string, body: unknown): Promise<T> =>
-    apiFetch<T>(`/api/v1${path}`, { method: "POST", body: JSON.stringify(body) }),
+    apiFetch<T>(path, { method: "POST", body: JSON.stringify(body) }),
   get: <T = any>(path: string): Promise<T> =>
-    apiFetch<T>(`/api/v1${path}`),
+    apiFetch<T>(path),
 };
 
 // ---------------------------------------------------------------------------

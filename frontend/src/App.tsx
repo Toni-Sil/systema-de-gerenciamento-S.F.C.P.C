@@ -2,9 +2,9 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Route, Routes, Navigate } from "react-router-dom";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { ThemeProvider } from "@/hooks/use-theme";
-import { AuthProvider, useAuth } from "@/hooks/use-auth";
-import { AppLayout } from "@/components/AppLayout";
+import { ThemeProvider } from "@/hooks/use-theme.tsx";
+import { AuthProvider, useAuth } from "./hooks/use-auth";
+import { AppLayout } from "./components/AppLayout";
 import Dashboard from "./pages/Dashboard";
 import Products from "./pages/Products";
 import Movements from "./pages/Movements";
@@ -13,8 +13,8 @@ import Financial from "./pages/Financial";
 import Alerts from "./pages/Alerts";
 import Reports from "./pages/Reports";
 import Settings from "./pages/Settings";
-import NotFound from "./pages/NotFound";
 import Login from "./pages/Login";
+import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -25,24 +25,33 @@ const queryClient = new QueryClient({
   },
 });
 
-function ProtectedRoutes() {
+function AppRoutes() {
   const { isAuthenticated } = useAuth();
-  if (!isAuthenticated) return <Navigate to="/login" replace />;
+
   return (
-    <AppLayout>
+    <BrowserRouter>
       <Routes>
-        <Route path="/" element={<Navigate to="/dashboard" replace />} />
-        <Route path="/dashboard" element={<Dashboard />} />
-        <Route path="/products" element={<Products />} />
-        <Route path="/movements" element={<Movements />} />
-        <Route path="/stock" element={<StockBalance />} />
-        <Route path="/financial" element={<Financial />} />
-        <Route path="/alerts" element={<Alerts />} />
-        <Route path="/reports" element={<Reports />} />
-        <Route path="/settings" element={<Settings />} />
-        <Route path="*" element={<NotFound />} />
+        {!isAuthenticated ? (
+          <>
+            <Route path="/login" element={<Login />} />
+            <Route path="*" element={<Navigate to="/login" replace />} />
+          </>
+        ) : (
+          <Route element={<AppLayout />}>
+            <Route path="/" element={<Navigate to="/dashboard" replace />} />
+            <Route path="/dashboard" element={<Dashboard />} />
+            <Route path="/products" element={<Products />} />
+            <Route path="/movements" element={<Movements />} />
+            <Route path="/stock" element={<StockBalance />} />
+            <Route path="/financial" element={<Financial />} />
+            <Route path="/alerts" element={<Alerts />} />
+            <Route path="/reports" element={<Reports />} />
+            <Route path="/settings" element={<Settings />} />
+            <Route path="*" element={<NotFound />} />
+          </Route>
+        )}
       </Routes>
-    </AppLayout>
+    </BrowserRouter>
   );
 }
 
@@ -52,12 +61,7 @@ const App = () => (
       <TooltipProvider>
         <Toaster />
         <AuthProvider>
-          <BrowserRouter>
-            <Routes>
-              <Route path="/login" element={<Login />} />
-              <Route path="/*" element={<ProtectedRoutes />} />
-            </Routes>
-          </BrowserRouter>
+          <AppRoutes />
         </AuthProvider>
       </TooltipProvider>
     </QueryClientProvider>

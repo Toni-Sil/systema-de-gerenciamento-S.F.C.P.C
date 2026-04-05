@@ -181,3 +181,22 @@ class ExpenseORM(Base):
     reference_doc = Column(String(120), nullable=True)  # NF number or PDF hash
     expense_date = Column(Date, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+
+# ---------------------------------------------------------------------------
+# Settings & Configuration
+# ---------------------------------------------------------------------------
+
+class TenantSettingsORM(Base):
+    """Configurações específicas do tenant, incluindo IA e preferências."""
+    __tablename__ = "tenant_settings"
+
+    tenant_id = Column(UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), primary_key=True)
+    llm_provider = Column(String(40), default="gemini", nullable=False)
+    gemini_api_key = Column(String(255), nullable=True)
+    ollama_url = Column(String(255), nullable=True)
+    ollama_model = Column(String(80), nullable=True)
+    is_multimodal_enabled = Column(Boolean, default=True, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    tenant = relationship("TenantORM", backref="settings_ref", lazy="noload")

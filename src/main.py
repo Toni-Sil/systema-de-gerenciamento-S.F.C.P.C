@@ -88,10 +88,9 @@ app = FastAPI(
     redoc_url="/redoc",
 )
 
-_allowed_origins = os.getenv("ALLOWED_ORIGINS", "*").split(",")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=_allowed_origins,
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -101,12 +100,10 @@ app.add_middleware(TenantMiddleware)
 
 # Routers
 app.include_router(whatsapp_router)
-app.include_router(ai_input_router)  # fix #17
+app.include_router(ai_input_router)
 
 _auth = Depends(verify_jwt_token)
 
-
-# ---------------------------------------------------------------------------
 # Health
 # ---------------------------------------------------------------------------
 
@@ -309,6 +306,76 @@ async def get_demand_forecast(
     async with get_session() as session:
         history = await GoldLayerService.get_movement_history(tenant_id, session)  # fix #14
     return DemandForecasting.predict_next_period(history, days=days)
+    
+
+@v1_router.get("/intelligence/live-summary", tags=["Intelligence"])
+async def get_live_summary(
+    tenant_id: UUID = Depends(get_validated_tenant_id),
+):
+    from llm.agent import AgentOrchestrator
+    async with get_session() as session:
+        insight = await AgentOrchestrator.generate_dashboard_insight(tenant_id, session)
+    return {"insight": insight}
+    
+
+# --- Settings ---
+
+class SettingsUpdateSchema(BaseModel):
+    llm_provider: str
+    gemini_api_key: Optional[str] = None
+    ollama_url: Optional[str] = None
+    ollama_model: Optional[str] = None
+
+
+@v1_router.get("/settings", tags=["Settings"])
+async def get_settings(tenant_id: UUID = Depends(get_validated_tenant_id)):
+    async with get_session() as session:
+        from db.orm_models import TenantSettingsORM
+        from sqlalchemy import select
+        result = await session.execute(
+            select(TenantSettingsORM).where(TenantSettingsORM.tenant_id == tenant_id)
+        )
+        settings = result.scalar_one_or_none()
+        if not settings:
+            return {
+                "llm_provider": "gemini",
+                "gemini_api_key": None,
+                "ollama_url": "http://localhost:11434",
+                "ollama_model": "llama3"
+            }
+        return {
+            "llm_provider": settings.llm_provider,
+            "gemini_api_key": "***" if settings.gemini_api_key else None, # Obscure keys
+            "ollama_url": settings.ollama_url,
+            "ollama_model": settings.ollama_model
+        }
+
+
+@v1_router.post("/settings", tags=["Settings"])
+async def update_settings(
+    data: SettingsUpdateSchema,
+    tenant_id: UUID = Depends(get_validated_tenant_id),
+):
+    async with get_session() as session:
+        from db.orm_models import TenantSettingsORM
+        from sqlalchemy import select
+        result = await session.execute(
+            select(TenantSettingsORM).where(TenantSettingsORM.tenant_id == tenant_id)
+        )
+        settings = result.scalar_one_or_none()
+        if not settings:
+            settings = TenantSettingsORM(tenant_id=tenant_id)
+            session.add(settings)
+        
+        settings.llm_provider = data.llm_provider
+        # Only update key if actual new key is provided (not the *** placeholder)
+        if data.gemini_api_key and data.gemini_api_key != "***":
+            settings.gemini_api_key = data.gemini_api_key
+        settings.ollama_url = data.ollama_url
+        settings.ollama_model = data.ollama_model
+        
+        await session.commit()
+        return {"status": "success"}
 
 
 # --- Agent ---
@@ -320,40 +387,48 @@ class ChatMessage(BaseModel):
 @v1_router.post("/agent/chat", tags=["Agent"])
 async def chat_with_agent(
     chat_input: ChatMessage,
-    tenant_id: UUID = Depends(get_validated_tenant_id),  # fix #16
+    tenant_id: UUID = Depends(get_validated_tenant_id),
 ):
     from llm.agent import AgentOrchestrator
-    reply = await AgentOrchestrator.process_message(
-        tenant_id=tenant_id,
-        message=chat_input.message,
-    )
+    async with get_session() as session:
+        reply = await AgentOrchestrator.process_message(
+            tenant_id=tenant_id,
+            message=chat_input.message,
+            session=session
+        )
     return {"reply": reply}
 
 
 # --- Finance upload ---
 
-@v1_router.post("/finance/upload", tags=["Finance"])  # fix #19: movido para v1
+@v1_router.post("/finance/upload", tags=["Finance"])
 async def upload_financial_document(
     file: UploadFile = File(...),
     document_type: str = Form("INVOICE"),
-    tenant_id: UUID = Depends(get_validated_tenant_id),  # fix #16
+    tenant_id: UUID = Depends(get_validated_tenant_id),
 ):
     file_bytes = await file.read()
     from vision.ocr_service import OCRService
     from llm.agent import AgentOrchestrator
     import json
+    
     extracted_text = OCRService.extract_text(file_bytes)
     prompt = f"[{document_type}] OCR Extraction: {extracted_text}"
-    reply_str = await AgentOrchestrator.process_message(tenant_id, prompt)
+    
+    async with get_session() as session:
+        reply_str = await AgentOrchestrator.process_message(tenant_id, prompt, session)
+        
     try:
         reply_json = json.loads(reply_str)
     except Exception:
         reply_json = {"raw_reply": reply_str}
+        
     return {
         "status": "success",
         "ocr_preview": extracted_text[:150] + "..." if len(extracted_text) > 150 else extracted_text,
         "agent_decision": reply_json,
     }
+
 
 
 # Mount v1 router

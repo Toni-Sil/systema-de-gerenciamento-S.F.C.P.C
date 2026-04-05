@@ -58,3 +58,5 @@ coverage.xml
 *.pth
 *.pkl
 models/trained/
+venv/
+venv_new/
