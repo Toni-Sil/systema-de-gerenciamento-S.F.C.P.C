@@ -200,3 +200,21 @@ class TenantSettingsORM(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
     tenant = relationship("TenantORM", backref="settings_ref", lazy="noload")
+
+
+class PendingActionORM(Base):
+    """Ações propostas pela IA que aguardam aprovação ou revisão humana (Governança)."""
+    __tablename__ = "pending_actions"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
+    tenant_id = Column(UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False)
+    action_type = Column(String(40), nullable=False)  # Entry, Exit, RegisterExpense, etc.
+    raw_message = Column(Text, nullable=True)        # O input original (voz/texto/ocr)
+    proposed_params = Column(JSON, nullable=False)   # O JSON gerado pela IA
+    risk_level = Column(String(20), default="low")   # low, medium, high
+    risk_reason = Column(String(255), nullable=True) # Por que caiu na governança?
+    status = Column(String(20), default="pending")   # pending, approved, rejected
+    rejection_reason = Column(String(255), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    tenant = relationship("TenantORM", lazy="noload")

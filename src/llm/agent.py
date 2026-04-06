@@ -6,7 +6,7 @@ from typing import List, Optional, Dict, Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
-from db.orm_models import ProductORM
+from db.orm_models import ProductORM, PendingActionORM
 from llm.tools import LLMTools
 from llm.parser import LLMOuputValidator
 from llm.governance import GovernanceRules
@@ -98,6 +98,21 @@ class AgentOrchestrator:
                     tool_resp = await LLMTools.get_inventory_status(tenant_id, session)
                     return AgentOrchestrator._merge_tool_resp(governed_intent, tool_resp)
 
+            # --- NOVO: Se cair na Governança, salvar como ação pendente ---
+            if status == "needs_approval":
+                new_pending = PendingActionORM(
+                    tenant_id=tenant_id,
+                    action_type=action,
+                    raw_message=message,
+                    proposed_params=params,
+                    risk_level="high", # TODO: mapear dinamicamente
+                    risk_reason=governed_intent.get("motivo"),
+                    status="pending"
+                )
+                session.add(new_pending)
+                await session.commit()
+                governed_intent["pending_id"] = str(new_pending.id)
+
             return json.dumps(governed_intent, ensure_ascii=False)
 
         except Exception as e:
@@ -140,6 +155,21 @@ class AgentOrchestrator:
             # Aqui não executamos a ferramenta automaticamente (aguardamos confirmação do usuário no UI)
             # Mas aplicamos governança para avisar sobre riscos
             governed_intent = GovernanceRules.evaluate_action(validated_intent)
+            
+            if governed_intent.get("status") == "needs_approval":
+                new_pending = PendingActionORM(
+                    tenant_id=tenant_id,
+                    action_type=governed_intent.get("action"),
+                    raw_message=f"OCR Processing: {message}",
+                    proposed_params=governed_intent.get("params"),
+                    risk_level="medium",
+                    risk_reason=governed_intent.get("motivo"),
+                    status="pending"
+                )
+                session.add(new_pending)
+                await session.commit()
+                governed_intent["pending_id"] = str(new_pending.id)
+
             return json.dumps(governed_intent, ensure_ascii=False)
         except Exception as e:
             logger.error(f"Erro no processamento Multimodal: {e}")

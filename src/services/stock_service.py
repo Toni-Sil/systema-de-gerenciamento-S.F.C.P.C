@@ -14,7 +14,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from db.orm_models import ProductORM, StockBalanceORM, StockMovementORM
-from messaging.producer import producer
+from messaging.event_bus import event_bus
 from models.entities import MovementSchema, MovementType, StockBalanceSchema
 from observability import record_movement
 
@@ -126,18 +126,20 @@ class StockService:
         session.add(movement_orm)
         await session.flush()
 
-        # 5. Emit domain event
-        await producer.publish("stock.movement", {
-            "tenant_id": str(tenant_id),
-            "product_id": str(movement.product_id),
-            "product_code": product.code,
-            "type": movement.type.value,
-            "quantity": movement.quantity,
-            "prev_balance": prev_balance,
-            "new_balance": balance_orm.balance,
-            "min_stock": product.min_stock,
-            "low_stock_alert": balance_orm.balance < product.min_stock,
-        })
+        # 5. Emit domain event to new EventBus
+        await event_bus.publish(
+            topic="stock.movement.created",
+            data={
+                "product_id": str(movement.product_id),
+                "product_code": product.code,
+                "movement_type": movement.type.value,
+                "quantity": movement.quantity,
+                "prev_balance": prev_balance,
+                "new_balance": balance_orm.balance,
+                "min_stock": product.min_stock,
+            },
+            tenant_id=str(tenant_id),
+        )
 
         # 6. Prometheus metric
         record_movement(

@@ -10,6 +10,8 @@ import {
   Settings,
   X,
   Sparkles,
+  ShieldAlert,
+  BrainCircuit,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { AIMovementInput } from './AIMovementInput';
@@ -20,6 +22,8 @@ const navItems = [
   { to: '/stock', icon: BarChart3, label: 'Estoque' },
   { to: '/movements', icon: ArrowLeftRight, label: 'Movimentações' },
   { to: '/financial', icon: DollarSign, label: 'Financeiro' },
+  { to: '/analytics', icon: BrainCircuit, label: 'Análise Preditiva' },
+  { to: '/governance', icon: ShieldAlert, label: 'Governança' },
   { to: '/reports', icon: FileText, label: 'Relatórios' },
   { to: '/alerts', icon: Bell, label: 'Alertas' },
   { to: '/settings', icon: Settings, label: 'Configurações' },

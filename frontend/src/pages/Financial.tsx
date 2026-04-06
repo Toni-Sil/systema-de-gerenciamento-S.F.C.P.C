@@ -3,6 +3,7 @@ import { useFinancialSummary } from '@/hooks/useFinancial';
 import { formatCurrency, formatPercent } from '@/lib/utils';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import { TrendingUp } from 'lucide-react';
+import { InvoiceUpload } from '@/components/InvoiceUpload';
 
 export default function Financial() {
   const { data, isLoading } = useFinancialSummary();
@@ -20,6 +21,9 @@ export default function Financial() {
         <h1 className="text-2xl font-bold">Financeiro</h1>
         <p className="text-muted-foreground text-sm">Resumo financeiro do período</p>
       </div>
+
+      <InvoiceUpload />
+
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {summary.map(({ label, value }) => (
           <Card key={label}>

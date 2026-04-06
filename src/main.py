@@ -22,7 +22,7 @@ from pydantic import BaseModel
 from auth.jwt_handler import verify_jwt_token
 from auth.tenant_context import get_tenant_id
 from db.session import get_session
-from messaging.producer import producer
+from messaging.event_bus import event_bus
 from middleware.rate_limiter import RateLimiterMiddleware
 from middleware.tenant_middleware import TenantMiddleware
 from models.entities import (
@@ -67,11 +67,21 @@ def get_validated_tenant_id() -> UUID:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    logger.info("startup: initialising message broker worker")
-    await producer.start_worker()
+    # Register all event consumers
+    from messaging.consumers.stock_consumers import register_stock_consumers
+    from messaging.consumers.finance_consumers import register_finance_consumers
+    register_stock_consumers()
+    register_finance_consumers()
+
+    # Start the event bus worker
+    await event_bus.start()
+    logger.info("startup: EventBus started and consumers registered")
+
     SchedulerService.start()
     yield
-    logger.info("shutdown: cleaning up resources")
+
+    logger.info("shutdown: stopping EventBus")
+    await event_bus.stop()
     SchedulerService.stop()
 
 
@@ -316,6 +326,33 @@ async def get_live_summary(
     async with get_session() as session:
         insight = await AgentOrchestrator.generate_dashboard_insight(tenant_id, session)
     return {"insight": insight}
+
+
+# --- Predictive Analytics ---
+
+@v1_router.get("/analytics/stock-health", tags=["Analytics"])
+async def get_stock_health(tenant_id: UUID = Depends(get_validated_tenant_id)):
+    from data.predictive_service import PredictiveService
+    async with get_session() as session:
+        return await PredictiveService.get_stock_health(tenant_id, session)
+
+
+@v1_router.get("/analytics/expense-trend", tags=["Analytics"])
+async def get_expense_trend(
+    months: int = 6,
+    tenant_id: UUID = Depends(get_validated_tenant_id),
+):
+    from data.predictive_service import PredictiveService
+    async with get_session() as session:
+        return await PredictiveService.get_expense_trend(tenant_id, session, months=months)
+
+
+@v1_router.get("/analytics/kpis", tags=["Analytics"])
+async def get_analytics_kpis(tenant_id: UUID = Depends(get_validated_tenant_id)):
+    from data.predictive_service import PredictiveService
+    async with get_session() as session:
+        return await PredictiveService.get_summary_kpis(tenant_id, session)
+
     
 
 # --- Settings ---
@@ -374,6 +411,66 @@ async def update_settings(
         settings.ollama_url = data.ollama_url
         settings.ollama_model = data.ollama_model
         
+        await session.commit()
+        return {"status": "success"}
+
+
+# --- Governance ---
+
+@v1_router.get("/governance/pending", tags=["Governance"])
+async def list_pending_actions(tenant_id: UUID = Depends(get_validated_tenant_id)):
+    async with get_session() as session:
+        from db.orm_models import PendingActionORM
+        from sqlalchemy import select
+        result = await session.execute(
+            select(PendingActionORM)
+            .where(PendingActionORM.tenant_id == tenant_id, PendingActionORM.status == "pending")
+            .order_by(PendingActionORM.created_at.desc())
+        )
+        return result.scalars().all()
+
+
+@v1_router.post("/governance/approve/{action_id}", tags=["Governance"])
+async def approve_action(
+    action_id: UUID,
+    tenant_id: UUID = Depends(get_validated_tenant_id),
+):
+    from db.orm_models import PendingActionORM
+    from llm.tools import LLMTools
+    async with get_session() as session:
+        action = await session.get(PendingActionORM, action_id)
+        if not action or str(action.tenant_id) != str(tenant_id):
+            raise HTTPException(status_code=404)
+        
+        # Executar a ferramenta real com base no tipo
+        params = action.proposed_params
+        if action.action_type == "Entry":
+            await LLMTools.record_movement(tenant_id, params.get("product"), "ENTRY", float(params.get("quantity", 1)), session)
+        elif action.action_type == "Exit":
+            await LLMTools.record_movement(tenant_id, params.get("product"), "EXIT", float(params.get("quantity", 1)), session)
+        elif action.action_type == "RegisterExpense":
+            from llm.tools import FinancialTools
+            await FinancialTools.register_expense(tenant_id, float(params.get("value", 0)), params.get("supplier"), session)
+        
+        action.status = "approved"
+        await session.commit()
+        return {"status": "success"}
+
+
+@v1_router.post("/governance/reject/{action_id}", tags=["Governance"])
+async def reject_action(
+    action_id: UUID,
+    reason: str = "Ação rejeitada por decisão gerencial.",
+    tenant_id: UUID = Depends(get_validated_tenant_id),
+):
+    from db.orm_models import PendingActionORM
+    async with get_session() as session:
+        action = await session.get(PendingActionORM, action_id)
+        if not action or str(action.tenant_id) != str(tenant_id):
+            raise HTTPException(status_code=404)
+        
+        action.status = "rejected"
+        action.rejection_reason = reason
         await session.commit()
         return {"status": "success"}
 

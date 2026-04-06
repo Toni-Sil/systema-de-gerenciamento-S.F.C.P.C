@@ -13,6 +13,8 @@ import Financial from "./pages/Financial";
 import Alerts from "./pages/Alerts";
 import Reports from "./pages/Reports";
 import Settings from "./pages/Settings";
+import Governance from "./pages/Governance";
+import Analytics from "./pages/Analytics";
 import Login from "./pages/Login";
 import NotFound from "./pages/NotFound";
 
@@ -45,6 +47,8 @@ function AppRoutes() {
             <Route path="/stock" element={<StockBalance />} />
             <Route path="/financial" element={<Financial />} />
             <Route path="/alerts" element={<Alerts />} />
+            <Route path="/governance" element={<Governance />} />
+            <Route path="/analytics" element={<Analytics />} />
             <Route path="/reports" element={<Reports />} />
             <Route path="/settings" element={<Settings />} />
             <Route path="*" element={<NotFound />} />

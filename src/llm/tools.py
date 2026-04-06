@@ -65,3 +65,50 @@ class LLMTools:
         except Exception as e:
             return json.dumps({"status": "error", "message": str(e)})
 
+
+class FinancialTools:
+    """Ferramentas de IA para o módulo financeiro."""
+
+    @staticmethod
+    async def register_expense(
+        tenant_id: UUID, 
+        value: float, 
+        supplier: str, 
+        session: AsyncSession
+    ) -> str:
+        """
+        Registra uma despesa financeira vinculada ao tenant.
+        """
+        try:
+            from db.orm_models import ExpenseORM
+            from models.entities import ExpenseCategory
+            from datetime import date
+
+            expense = ExpenseORM(
+                tenant_id=tenant_id,
+                value=value,
+                supplier=supplier,
+                category=ExpenseCategory.OTHER,
+                expense_date=date.today(),
+            )
+            session.add(expense)
+            await session.commit()
+
+            # Emitir evento para o consumidor financeiro
+            from messaging.event_bus import event_bus
+            await event_bus.publish(
+                topic="finance.expense.created",
+                data={
+                    "value": value,
+                    "supplier": supplier,
+                    "expense_date": str(date.today()),
+                },
+                tenant_id=str(tenant_id),
+            )
+
+            return json.dumps({
+                "status": "success", 
+                "message": f"Despesa de R$ {value} (Fornecedor: {supplier}) registrada com sucesso."
+            })
+        except Exception as e:
+            return json.dumps({"status": "error", "message": str(e)})
