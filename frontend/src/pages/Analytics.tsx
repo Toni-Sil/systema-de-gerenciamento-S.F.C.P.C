@@ -45,17 +45,17 @@ const RISK_CONFIG = {
 export default function Analytics() {
   const { data: health, isLoading: healthLoading } = useQuery<StockHealth[]>({
     queryKey: ['stock-health'],
-    queryFn: () => api.get('/analytics/stock-health'),
+    queryFn: () => api.get('/api/v1/analytics/stock-health'),
   });
 
   const { data: expenses, isLoading: expLoading } = useQuery<any[]>({
     queryKey: ['expense-trend'],
-    queryFn: () => api.get('/analytics/expense-trend'),
+    queryFn: () => api.get('/api/v1/analytics/expense-trend'),
   });
 
   const { data: kpis } = useQuery<KPIs>({
     queryKey: ['analytics-kpis'],
-    queryFn: () => api.get('/analytics/kpis'),
+    queryFn: () => api.get('/api/v1/analytics/kpis'),
   });
 
   const criticalItems = health?.filter(h => h.risk_level === 'critical') ?? [];

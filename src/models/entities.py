@@ -83,13 +83,12 @@ class TenantSchema(BaseSchema):
 # User
 # ---------------------------------------------------------------------------
 
-class UserCreateSchema(BaseSchema):
-    """Input model for creating a user — accepts plain-text password."""
-    tenant_id: UUID
-    username: str = Field(..., min_length=3, max_length=60)
+class SignupSchema(BaseSchema):
+    """Modern signup flow including company creation."""
+    company_name: str = Field(..., min_length=3)
+    username: str = Field(..., min_length=3)
     email: str
-    role: UserRole = UserRole.OPERATOR
-    plain_password: str = Field(..., min_length=8)
+    password: str = Field(..., min_length=8)
 
     @field_validator("email")
     @classmethod
@@ -99,6 +98,21 @@ class UserCreateSchema(BaseSchema):
         return v.lower()
 
 
+class LoginSchema(BaseSchema):
+    """Email-based global login schema."""
+    email: str
+    password: str
+
+
+class UserCreateSchema(BaseSchema):
+    """Input model for creating a user (internal/admin use)."""
+    tenant_id: UUID
+    username: str = Field(..., min_length=3, max_length=60)
+    email: str
+    role: UserRole = UserRole.OPERATOR
+    plain_password: str = Field(..., min_length=8)
+
+
 class UserSchema(BaseSchema):
     """Persisted user model — stores hashed password only."""
     id: UUID = Field(default_factory=uuid4)
@@ -106,7 +120,6 @@ class UserSchema(BaseSchema):
     username: str
     email: str
     role: UserRole = UserRole.OPERATOR
-    hashed_password: str
     is_active: bool = True
     created_at: datetime = Field(default_factory=datetime.utcnow)
 

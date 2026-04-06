@@ -74,6 +74,7 @@ class ProductORM(Base):
     __table_args__ = (
         UniqueConstraint("tenant_id", "code", name="uq_product_tenant_code"),
         Index("ix_products_tenant_id", "tenant_id"),
+        Index("ix_products_tenant_active", "tenant_id", "is_active"),
     )
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
@@ -197,6 +198,11 @@ class TenantSettingsORM(Base):
     ollama_url = Column(String(255), nullable=True)
     ollama_model = Column(String(80), nullable=True)
     is_multimodal_enabled = Column(Boolean, default=True, nullable=False)
+
+    # Integração com Sistema Externo de Ordens de Serviço (Firebase)
+    service_order_url = Column(String(255), nullable=True)
+    service_order_api_key = Column(String(255), nullable=True)
+
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
     tenant = relationship("TenantORM", backref="settings_ref", lazy="noload")

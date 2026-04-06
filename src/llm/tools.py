@@ -112,3 +112,38 @@ class FinancialTools:
             })
         except Exception as e:
             return json.dumps({"status": "error", "message": str(e)})
+
+
+class ServiceOrderTools:
+    """Ferramentas para integração com o sistema externo de Ordem de Serviço."""
+
+    @staticmethod
+    async def create_client(
+        tenant_id: UUID,
+        name: str,
+        phone: str,
+        session: AsyncSession,
+        email: str = "",
+        address: str = ""
+    ) -> str:
+        """Cria um cliente no sistema de OS externo."""
+        from services.service_order_service import ServiceOrderService
+        res = await ServiceOrderService.create_client(tenant_id, session, name, phone, email, address)
+        return json.dumps(res)
+
+    @staticmethod
+    async def create_order(
+        tenant_id: UUID,
+        client_id: str,
+        description: str,
+        session: AsyncSession,
+        priority: str = "normal",
+        furniture_type: str = "sofa",
+        fabric: str = ""
+    ) -> str:
+        """Cria uma Ordem de Serviço vinculada a um cliente específico."""
+        from services.service_order_service import ServiceOrderService
+        res = await ServiceOrderService.create_order(
+            tenant_id, session, client_id, description, priority, furniture_type, fabric
+        )
+        return json.dumps(res)

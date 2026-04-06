@@ -32,11 +32,11 @@ export default function Governance() {
 
   const { data: actions, isLoading } = useQuery<PendingAction[]>({
     queryKey: ['pending-actions'],
-    queryFn: () => api.get('/governance/pending'),
+    queryFn: () => api.get('/api/v1/governance/pending'),
   });
 
   const approveMutation = useMutation({
-    mutationFn: (id: string) => api.post(`/governance/approve/${id}`, {}),
+    mutationFn: (id: string) => api.post(`/api/v1/governance/approve/${id}`, {}),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['pending-actions'] });
       toast({ title: 'Ação aprovada!', description: 'O estoque foi atualizado com sucesso.' });
@@ -44,7 +44,7 @@ export default function Governance() {
   });
 
   const rejectMutation = useMutation({
-    mutationFn: (id: string) => api.post(`/governance/reject/${id}`, {}),
+    mutationFn: (id: string) => api.post(`/api/v1/governance/reject/${id}`, {}),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['pending-actions'] });
       toast({ title: 'Ação rejeitada', variant: 'destructive' });

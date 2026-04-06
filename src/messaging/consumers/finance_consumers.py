@@ -20,7 +20,7 @@ async def on_expense_created(event: Dict[str, Any]):
     tenant_id = event.get("tenant_id")
     value = data.get("value", 0)
     supplier = data.get("supplier", "Desconhecido")
-    MONTHLY_ALERT_THRESHOLD = 50_000.0  # R$ 50.000
+    MONTHLY_ALERT_THRESHOLD = 5000.0  # R$ 5.000 (Consistent with Governance)
 
     logger.info(
         f"[CONSUMER:finance.expense] tenant={tenant_id} | "

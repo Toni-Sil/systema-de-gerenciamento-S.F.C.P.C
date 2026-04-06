@@ -11,14 +11,15 @@ const BASE_URL = (import.meta.env.VITE_API_URL as string) ?? "http://localhost:8
 // ---------------------------------------------------------------------------
 
 export interface LoginRequest {
-  tenant_id: string;
-  username: string;
+  email: string;
   password: string;
 }
 
 export interface LoginResponse {
   access_token: string;
   token_type: string;
+  username: string;
+  tenant_id: string;
 }
 
 export interface ProductSchema {
@@ -124,7 +125,7 @@ export const api = {
 // ---------------------------------------------------------------------------
 
 export async function login(data: LoginRequest): Promise<LoginResponse> {
-  const result = await apiFetch<LoginResponse>("/api/v1/auth/login", {
+  const result = await apiFetch<LoginResponse>("/auth/login", {
     method: "POST",
     body: JSON.stringify(data),
   });
@@ -132,8 +133,8 @@ export async function login(data: LoginRequest): Promise<LoginResponse> {
   return result;
 }
 
-export async function register(data: { tenant_id: string; username: string; password: string; email?: string; }) {
-  return apiFetch("/auth/register", { method: "POST", body: JSON.stringify(data) });
+export async function signup(data: any) {
+  return apiFetch("/auth/signup", { method: "POST", body: JSON.stringify(data) });
 }
 
 // ---------------------------------------------------------------------------

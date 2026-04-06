@@ -22,11 +22,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   });
 
   const login = useCallback(async (data: LoginRequest) => {
-    await apiLogin(data);
+    const res = await apiLogin(data);
     setState({
       isAuthenticated: true,
-      tenantId: data.tenant_id,
-      username: data.username,
+      tenantId: res.tenant_id,
+      username: res.username,
     });
   }, []);
 

@@ -60,3 +60,5 @@ coverage.xml
 models/trained/
 venv/
 venv_new/
+node_modules/
+package-lock.json

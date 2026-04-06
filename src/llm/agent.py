@@ -67,6 +67,8 @@ class AgentOrchestrator:
                 "   - Saída: {'action': 'Exit', 'params': {'product': 'CODIGO', 'quantity': 5}}\n"
                 "   - Saldo/Estoque: {'action': 'InventoryStatus', 'params': {}}\n"
                 "   - Despesa: {'action': 'RegisterExpense', 'params': {'value': 100.0, 'supplier': 'Nome'}}\n"
+                "   - Novo Cliente OS: {'action': 'CreateClient', 'params': {'name': 'Nome', 'phone': '99999', 'email': '...', 'address': '...'}}\n"
+                "   - Nova OS: {'action': 'CreateOrder', 'params': {'client_id': 'ID', 'description': '...', 'priority': 'high', 'furnitureType': 'sofa_cama'}}\n"
             )
 
             # 3. Gerar Resposta via Provedor Selecionado
@@ -96,6 +98,23 @@ class AgentOrchestrator:
                 
                 elif action == "InventoryStatus":
                     tool_resp = await LLMTools.get_inventory_status(tenant_id, session)
+                    return AgentOrchestrator._merge_tool_resp(governed_intent, tool_resp)
+
+                elif action == "CreateClient":
+                    from llm.tools import ServiceOrderTools
+                    tool_resp = await ServiceOrderTools.create_client(
+                        tenant_id, params.get("name"), params.get("phone"), session,
+                        params.get("email", ""), params.get("address", "")
+                    )
+                    return AgentOrchestrator._merge_tool_resp(governed_intent, tool_resp)
+
+                elif action == "CreateOrder":
+                    from llm.tools import ServiceOrderTools
+                    tool_resp = await ServiceOrderTools.create_order(
+                        tenant_id, params.get("client_id"), params.get("description"), session,
+                        params.get("priority", "normal"), params.get("furnitureType", "sofa"),
+                        params.get("fabric", "")
+                    )
                     return AgentOrchestrator._merge_tool_resp(governed_intent, tool_resp)
 
             # --- NOVO: Se cair na Governança, salvar como ação pendente ---

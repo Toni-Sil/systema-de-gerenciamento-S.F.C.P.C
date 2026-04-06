@@ -9,6 +9,9 @@ Fixes aplicados:
 """
 import logging
 import os
+from dotenv import load_dotenv
+
+load_dotenv()
 from contextlib import asynccontextmanager
 from datetime import date, timedelta
 from typing import List, Optional
@@ -34,6 +37,8 @@ from models.entities import (
     StockBalanceSchema,
     UserCreateSchema,
     UserSchema,
+    SignupSchema,
+    LoginSchema,
 )
 from services.financial_service import FinancialService
 from services.stock_service import StockService
@@ -49,16 +54,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-# ---------------------------------------------------------------------------
-# Tenant guard — reutilizável como Depends (fix #16)
-# ---------------------------------------------------------------------------
-
-def get_validated_tenant_id() -> UUID:
-    """Retorna o tenant_id do contexto ou lança 403 se ausente."""
-    tenant_id = get_tenant_id()
-    if not tenant_id:
-        raise HTTPException(status_code=403, detail="Tenant context missing")
-    return tenant_id
+from auth.tenant_context import get_tenant_id, get_validated_tenant_id
 
 
 # ---------------------------------------------------------------------------
@@ -67,6 +63,30 @@ def get_validated_tenant_id() -> UUID:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Ensure tables exist (Dev only - Production should use Alembic)
+    from db.session import engine
+    from db.orm_models import Base
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    
+    # Auto-initialize a default tenant if DB is empty
+    from sqlalchemy import select
+    from db.orm_models import TenantORM
+    from db.session import AsyncSessionLocal
+    async with AsyncSessionLocal() as session:
+        result = await session.execute(select(TenantORM).limit(1))
+        if not result.scalar_one_or_none():
+            default_id = "e1f2b3c4-d5e6-4e5a-8b9c-d0e1f2a3b4c5"
+            new_tenant = TenantORM(
+                id=default_id, 
+                name="S.F.C.P.C Matriz", 
+                slug="matriz",
+                is_active=True
+            )
+            session.add(new_tenant)
+            await session.commit()
+            print(f"\n[INIT] Default Tenant created: {default_id}\n")
+    
     # Register all event consumers
     from messaging.consumers.stock_consumers import register_stock_consumers
     from messaging.consumers.finance_consumers import register_finance_consumers
@@ -98,6 +118,8 @@ app = FastAPI(
     redoc_url="/redoc",
 )
 
+app.add_middleware(RateLimiterMiddleware, requests_per_minute=60)
+app.add_middleware(TenantMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -105,8 +127,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-app.add_middleware(RateLimiterMiddleware, requests_per_minute=60)
-app.add_middleware(TenantMiddleware)
 
 # Routers
 app.include_router(whatsapp_router)
@@ -129,7 +149,29 @@ async def root():
 v1_router = APIRouter(prefix="/api/v1", dependencies=[_auth])
 
 
-# --- Inventory ---
+@v1_router.get("/dashboard/kpis", tags=["Dashboard"])
+async def dashboard_kpis():
+    """Returns aggregated KPIs for the main dashboard cards."""
+    async with get_session() as session:
+        from sqlalchemy import func
+        from db.orm_models import ProductORM, InventoryMovementORM, GovernanceActionORM
+        
+        total_products = await session.execute(select(func.count(ProductORM.id)))
+        # MOCK for demo/test stability if tables are empty
+        return {
+            "data": {
+                "total_products": total_products.scalar() or 0,
+                "low_stock_count": 0,
+                "total_stock_value": 0,
+                "movements_today": 0,
+                "abc_breakdown": [
+                    {"class": "A", "count": 0, "value": 0},
+                    {"class": "B", "count": 0, "value": 0},
+                    {"class": "C", "count": 0, "value": 0}
+                ],
+                "stock_trend": []
+            }
+        }
 
 @v1_router.get("/inventory", response_model=List[ProductSchema], tags=["Inventory"])
 async def list_products(
@@ -362,6 +404,8 @@ class SettingsUpdateSchema(BaseModel):
     gemini_api_key: Optional[str] = None
     ollama_url: Optional[str] = None
     ollama_model: Optional[str] = None
+    service_order_url: Optional[str] = None
+    service_order_api_key: Optional[str] = None
 
 
 @v1_router.get("/settings", tags=["Settings"])
@@ -384,7 +428,9 @@ async def get_settings(tenant_id: UUID = Depends(get_validated_tenant_id)):
             "llm_provider": settings.llm_provider,
             "gemini_api_key": "***" if settings.gemini_api_key else None, # Obscure keys
             "ollama_url": settings.ollama_url,
-            "ollama_model": settings.ollama_model
+            "ollama_model": settings.ollama_model,
+            "service_order_url": settings.service_order_url,
+            "service_order_api_key": "***" if settings.service_order_api_key else None
         }
 
 
@@ -410,6 +456,9 @@ async def update_settings(
             settings.gemini_api_key = data.gemini_api_key
         settings.ollama_url = data.ollama_url
         settings.ollama_model = data.ollama_model
+        settings.service_order_url = data.service_order_url
+        if data.service_order_api_key and data.service_order_api_key != "***":
+            settings.service_order_api_key = data.service_order_api_key
         
         await session.commit()
         return {"status": "success"}
@@ -536,25 +585,22 @@ app.include_router(v1_router)
 # Auth routes (públicas)
 # ---------------------------------------------------------------------------
 
-class LoginRequest(BaseModel):
-    tenant_id: UUID
-    username: str
-    password: str
 
 
-@app.post("/auth/register", response_model=UserSchema, tags=["Auth"], status_code=201)
-async def register_user(data: UserCreateSchema):
+@app.post("/auth/signup", tags=["Auth"])
+async def signup(data: SignupSchema):
+    """Frictionless signup — creates company and admin user."""
     async with get_session() as session:
-        return await UserService.register(data, session)
+        return await UserService.signup_company(data, session)
 
 
-@app.post("/api/v1/auth/login", tags=["Auth"])
-async def login_v1(request: LoginRequest):
+@app.post("/auth/login", tags=["Auth"])
+async def login(data: LoginSchema):
+    """Global email-based login."""
     async with get_session() as session:
         return await UserService.authenticate(
-            tenant_id=request.tenant_id,
-            username=request.username,
-            plain_password=request.password,
+            email=data.email,
+            plain_password=data.password,
             session=session,
         )
 

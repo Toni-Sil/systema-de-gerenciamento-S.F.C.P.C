@@ -8,6 +8,7 @@ Fixes:
 """
 import json
 import os
+from uuid import UUID
 from typing import Literal, Optional
 
 import httpx
@@ -15,7 +16,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 
 from auth.jwt_handler import verify_jwt_token
-from auth.tenant_context import get_tenant_id
+from auth.tenant_context import get_tenant_id, get_validated_tenant_id
 
 router = APIRouter(prefix="/ai", tags=["AI Input"])
 

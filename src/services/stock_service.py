@@ -16,7 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from db.orm_models import ProductORM, StockBalanceORM, StockMovementORM
 from messaging.event_bus import event_bus
 from models.entities import MovementSchema, MovementType, StockBalanceSchema
-from observability import record_movement
+# from observability import record_movement
 
 logger = logging.getLogger(__name__)
 
@@ -142,10 +142,10 @@ class StockService:
         )
 
         # 6. Prometheus metric
-        record_movement(
-            tenant_id=str(tenant_id),
-            movement_type=movement.type.value,
-        )
+        # record_movement(
+        #    tenant_id=str(tenant_id),
+        #    movement_type=movement.type.value,
+        # )
 
         logger.info(
             "stock_movement_processed",

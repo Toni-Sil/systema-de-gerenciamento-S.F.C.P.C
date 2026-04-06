@@ -8,7 +8,10 @@ from auth.tenant_context import set_tenant_id
 logger = logging.getLogger(__name__)
 
 # Routes that are explicitly public (no tenant context required)
-_PUBLIC_PATHS = {"/", "/auth/token", "/docs", "/openapi.json", "/redoc"}
+_PUBLIC_PATHS = {
+    "/", "/auth/login", "/auth/signup", "/auth/token", 
+    "/health", "/docs", "/openapi.json", "/redoc"
+}
 
 
 class TenantMiddleware(BaseHTTPMiddleware):

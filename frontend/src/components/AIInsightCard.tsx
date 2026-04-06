@@ -7,7 +7,7 @@ export function AIInsightCard() {
   const { data, isLoading } = useQuery({
     queryKey: ['live-summary'],
     queryFn: async () => {
-      const res = await api.get('/intelligence/live-summary');
+      const res = await api.get('/api/v1/intelligence/live-summary');
       return res.insight;
     },
     refetchOnWindowFocus: false,

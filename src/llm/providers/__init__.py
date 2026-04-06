@@ -37,6 +37,5 @@ async def get_llm_provider(tenant_id: str | UUID, session: Optional[AsyncSession
     # Default to Gemini
     provider = GeminiProvider()
     if gemini_key:
-        import google.generativeai as genai
-        genai.configure(api_key=gemini_key)
+        provider.api_key = gemini_key
     return provider

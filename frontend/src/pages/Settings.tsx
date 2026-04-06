@@ -6,7 +6,7 @@ import { Label } from '@/components/ui/label';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { api } from '@/lib/api';
 import { useToast } from '@/hooks/use-toast';
-import { Sparkles, Save, BrainCircuit, Cloud } from 'lucide-react';
+import { Sparkles, Save, BrainCircuit, Cloud, FileText } from 'lucide-react';
 
 export default function Settings() {
   const { toast } = useToast();
@@ -16,6 +16,8 @@ export default function Settings() {
     gemini_api_key: '',
     ollama_url: 'http://localhost:11434',
     ollama_model: 'llama3',
+    service_order_url: '',
+    service_order_api_key: '',
   });
 
   useEffect(() => {
@@ -72,7 +74,7 @@ export default function Settings() {
               <Label className="text-[10px] font-bold tracking-[0.2em] uppercase text-indigo-400/80">Provedor de IA Selecionado</Label>
               <RadioGroup 
                 value={settings.llm_provider} 
-                onValueChange={(val) => setSettings({ ...settings, llm_provider: val })}
+                onValueChange={(val: string) => setSettings({ ...settings, llm_provider: val })}
                 className="grid grid-cols-1 md:grid-cols-2 gap-4"
               >
                 <Label
@@ -167,6 +169,54 @@ export default function Settings() {
                 className="w-full h-14 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 shadow-xl shadow-indigo-500/20 font-bold text-lg rounded-2xl active:scale-[0.98] transition-all"
             >
               {loading ? 'Salvando Alterações...' : <><Save className="mr-2 h-5 w-5" /> Salvar Configurações</>}
+            </Button>
+          </CardContent>
+        </Card>
+
+        {/* --- SERVICE ORDER INTEGRATION --- */}
+        <Card className="border-white/10 bg-zinc-950/50 backdrop-blur-xl overflow-hidden shadow-2xl">
+          <CardHeader className="pb-8">
+            <div className="flex items-center gap-4">
+               <div className="p-3 rounded-2xl bg-orange-500/10 text-orange-400 border border-orange-500/20">
+                  <FileText size={24} />
+               </div>
+               <div>
+                  <CardTitle className="text-xl">Sistema de Ordem de Serviço (Externo)</CardTitle>
+                  <CardDescription>Conecte o S.F.C.P.C ao sistema externo de gerenciamento de reformas.</CardDescription>
+               </div>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 p-8 rounded-3xl bg-white/[0.03] border border-white/5">
+              <div className="space-y-2">
+                <Label htmlFor="os_url" className="text-sm">URL do Sistema de OS</Label>
+                <Input 
+                    id="os_url"
+                    placeholder="https://os-system.vercel.app"
+                    value={settings.service_order_url}
+                    onChange={(e) => setSettings({ ...settings, service_order_url: e.target.value })}
+                    className="h-12 bg-black/40 border-white/10 transition-all rounded-xl"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="os_key" className="text-sm">API Key (x-api-key)</Label>
+                <Input 
+                    id="os_key"
+                    type="password"
+                    placeholder={settings.service_order_api_key === '***' ? 'Mantendo chave existente' : 'Cole sua chave aqui...'}
+                    value={settings.service_order_api_key === '***' ? '' : settings.service_order_api_key}
+                    onChange={(e) => setSettings({ ...settings, service_order_api_key: e.target.value })}
+                    className="h-12 bg-black/40 border-white/10 transition-all rounded-xl"
+                />
+              </div>
+            </div>
+            
+            <Button 
+                onClick={handleSave} 
+                disabled={loading}
+                className="w-full h-12 bg-white/5 hover:bg-white/10 border border-white/10 font-bold rounded-xl transition-all"
+            >
+              {loading ? 'Salvando...' : 'Atualizar Credenciais OS'}
             </Button>
           </CardContent>
         </Card>

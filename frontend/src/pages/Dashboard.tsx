@@ -26,7 +26,7 @@ export default function Dashboard() {
   const { data, isLoading } = useDashboard();
   const { data: kpis } = useQuery({
     queryKey: ['analytics-kpis'],
-    queryFn: () => api.get('/analytics/kpis'),
+    queryFn: () => api.get('/api/v1/analytics/kpis'),
   });
 
   const kpiCards = [
