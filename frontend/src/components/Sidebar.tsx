@@ -9,7 +9,6 @@ import {
   Bell,
   Settings,
   X,
-  Sparkles,
   ShieldAlert,
   BrainCircuit,
 } from 'lucide-react';
@@ -44,13 +43,13 @@ export function Sidebar({ open, setOpen }: SidebarProps) {
         )}
       >
         <div className="px-4 mb-6 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <div className="h-8 w-8 rounded-lg bg-primary flex items-center justify-center text-primary-foreground">
-                <Sparkles size={18} fill="currentColor" />
+          <div className="flex items-center gap-3">
+            <div className="h-12 w-12 rounded-full border-2 border-primary p-0.5 overflow-hidden bg-white shadow-sm">
+                <img src="/assets/logo.png" alt="Logo" className="h-full w-full object-contain" />
             </div>
             <div>
-              <h1 className="text-sm font-bold text-foreground leading-none">S.F.C.P.C</h1>
-              <p className="text-[10px] text-muted-foreground uppercase tracking-widest font-bold">Smart System</p>
+              <h1 className="text-sm font-black text-foreground leading-none tracking-tight">S.F.C.P.C</h1>
+              <p className="text-[10px] text-primary uppercase tracking-widest font-bold">Smart Logistics</p>
             </div>
           </div>
           <button 
@@ -91,43 +90,6 @@ export function Sidebar({ open, setOpen }: SidebarProps) {
           <AIMovementInput onDataExtracted={(data) => console.log('AI Data:', data)} variant="floating" />
       </div>
 
-      {/* Bottom Navigation for Mobile (Android Feel) */}
-      <nav className="fixed bottom-0 left-0 right-0 h-16 bg-card/80 backdrop-blur-xl border-t border-white/5 flex items-center justify-around px-2 lg:hidden z-40">
-        {navItems.slice(0, 2).map(({ to, icon: Icon, label }) => (
-          <NavLink
-            key={to}
-            to={to}
-            className={({ isActive }) =>
-              cn(
-                'flex flex-col items-center gap-1 p-2 transition-colors min-w-[72px]',
-                isActive ? 'text-primary' : 'text-muted-foreground'
-              )
-            }
-          >
-            <Icon size={20} />
-            <span className="text-[10px] whitespace-nowrap">{label}</span>
-          </NavLink>
-        ))}
-        
-        {/* Gap for the Floating button center-ish */}
-        <div className="w-16 h-16" />
-
-        {navItems.slice(2, 4).map(({ to, icon: Icon, label }) => (
-          <NavLink
-            key={to}
-            to={to}
-            className={({ isActive }) =>
-              cn(
-                'flex flex-col items-center gap-1 p-2 transition-colors min-w-[72px]',
-                isActive ? 'text-primary' : 'text-muted-foreground'
-              )
-            }
-          >
-            <Icon size={20} />
-            <span className="text-[10px] whitespace-nowrap">{label}</span>
-          </NavLink>
-        ))}
-      </nav>
     </>
   );
 }

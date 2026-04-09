@@ -85,3 +85,40 @@ class ServiceOrderService:
             except Exception as e:
                 logger.error(f"Error creating order in external OS: {e}")
                 return {"status": "error", "message": str(e)}
+    @staticmethod
+    async def list_orders(tenant_id: UUID, session: Any) -> Dict[str, Any]:
+        """Lista todas as ordens no sistema externo."""
+        base_url, api_key = await ServiceOrderService._get_credentials(tenant_id, session)
+        if not base_url:
+            return {"status": "error", "message": "Configurações de integração OS pendentes."}
+
+        url = f"{base_url}/api/v1/orders"
+        headers = {"x-api-key": api_key}
+
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            try:
+                resp = await client.get(url, headers=headers)
+                resp.raise_for_status()
+                return {"status": "success", "data": resp.json()}
+            except Exception as e:
+                logger.error(f"Error fetching orders from external OS: {e}")
+                return {"status": "error", "message": str(e)}
+
+    @staticmethod
+    async def get_order_details(tenant_id: UUID, session: Any, order_id: str) -> Dict[str, Any]:
+        """Busca detalhes de uma ordem específica no sistema externo."""
+        base_url, api_key = await ServiceOrderService._get_credentials(tenant_id, session)
+        if not base_url:
+            return {"status": "error", "message": "Configurações de integração OS pendentes."}
+
+        url = f"{base_url}/api/v1/orders/{order_id}"
+        headers = {"x-api-key": api_key}
+
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            try:
+                resp = await client.get(url, headers=headers)
+                resp.raise_for_status()
+                return {"status": "success", "data": resp.json()}
+            except Exception as e:
+                logger.error(f"Error fetching order {order_id} from external OS: {e}")
+                return {"status": "error", "message": str(e)}

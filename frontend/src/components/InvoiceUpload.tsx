@@ -1,4 +1,5 @@
 import { useState, useRef } from 'react';
+import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { FileUp, Sparkles, Loader2, CheckCircle2, ShieldAlert } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
@@ -93,9 +94,9 @@ export function InvoiceUpload() {
                     Selecionar Arquivo
                 </Button>
                 <Button variant="outline" className="border-indigo-500/30 text-indigo-400" asChild>
-                    <a href="/governance" className="flex items-center gap-2">
+                    <Link to="/governance" className="flex items-center gap-2">
                        <ShieldAlert size={14} /> Ver Pendências
-                    </a>
+                    </Link>
                 </Button>
             </div>
         </div>

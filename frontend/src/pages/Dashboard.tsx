@@ -205,6 +205,9 @@ export default function Dashboard() {
             </CardContent>
           </Card>
         </div>
+
+        {/* External OS Integration Status */}
+        <ExternalOSWidget />
       </div>
     </PageTransition>
   );
@@ -213,8 +216,67 @@ export default function Dashboard() {
 function SlideInHeader() {
   return (
     <div>
-      <h1 className="text-3xl font-bold tracking-tight gradient-text">Dashboard</h1>
-      <p className="text-muted-foreground text-sm mt-1">Visão executiva em tempo real do S.F.C.P.C</p>
+      <h1 className="text-3xl font-bold tracking-tight gradient-text">Gestão de Sofás para Caminhões</h1>
+      <p className="text-muted-foreground text-sm mt-1">Inteligência logística e conforto para o transporte rodoviário</p>
     </div>
+  );
+}
+
+function ExternalOSWidget() {
+  const { data, isLoading, error } = useQuery({
+    queryKey: ['external-orders'],
+    queryFn: () => api.get('/api/v1/external/orders'),
+    refetchInterval: 60000, // Sync every minute
+  });
+
+  const orders = data?.status === 'success' ? data.data : [];
+
+  return (
+    <Card className="border-border/50 glass overflow-hidden">
+      <CardHeader className="bg-white/[0.02] border-b border-border/50">
+        <div className="flex items-center justify-between">
+          <CardTitle className="text-sm font-semibold flex items-center gap-2">
+            <Activity className="text-orange-400" size={16} />
+            Sistema Externo de Ordens de Serviço
+          </CardTitle>
+          <Badge variant="outline" className="text-[10px] bg-orange-500/5 text-orange-400 border-orange-500/20">
+            Sincronização Ativa
+          </Badge>
+        </div>
+      </CardHeader>
+      <CardContent className="p-0">
+        {isLoading ? (
+          <div className="p-8 flex justify-center"><div className="h-6 w-6 border-2 border-orange-500 border-t-transparent rounded-full animate-spin" /></div>
+        ) : error || data?.status === 'error' ? (
+          <div className="p-8 text-center text-xs text-muted-foreground">
+            Aguardando configuração de integração OS nas configurações.
+          </div>
+        ) : orders.length === 0 ? (
+          <div className="p-8 text-center text-xs text-muted-foreground">Nenhuma ordem aberta no sistema externo.</div>
+        ) : (
+          <div className="divide-y divide-border/50">
+            {orders.slice(0, 5).map((order: any) => (
+              <div key={order.id} className="p-4 flex items-center justify-between hover:bg-white/[0.01] transition-colors">
+                <div className="flex flex-col gap-0.5">
+                  <span className="text-xs font-bold text-foreground">OS #{order.id}</span>
+                  <span className="text-[10px] text-muted-foreground line-clamp-1">{order.description}</span>
+                </div>
+                <div className="flex items-center gap-3">
+                  <span className="text-[10px] font-medium text-orange-400 capitalize bg-orange-400/10 px-2 py-0.5 rounded-full">{order.status}</span>
+                  <div className="text-[10px] text-muted-foreground text-right">
+                    {order.fabric && <span className="block italic opacity-70">{order.fabric}</span>}
+                  </div>
+                </div>
+              </div>
+            ))}
+            {orders.length > 5 && (
+              <div className="p-3 text-center text-[10px] text-muted-foreground bg-white/[0.01]">
+                Mais {orders.length - 5} ordens em andamento no sistema de OS.
+              </div>
+            )}
+          </div>
+        )}
+      </CardContent>
+    </Card>
   );
 }

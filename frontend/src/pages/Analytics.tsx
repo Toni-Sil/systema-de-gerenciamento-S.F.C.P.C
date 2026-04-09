@@ -5,12 +5,12 @@ import {
 } from 'recharts';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { api } from '@/lib/api';
+import { api, exportFinancialReport, exportInventoryReport, exportMovementsReport } from '@/lib/api';
 import { formatCurrency } from '@/lib/utils';
 import { AIInsightCard } from '@/components/AIInsightCard';
 import {
-  AlertTriangle, TrendingUp, TrendingDown, ShieldCheck,
-  PackageX, Flame, Activity,
+  TrendingUp, TrendingDown, ShieldCheck,
+  PackageX, Flame, Activity, Download,
 } from 'lucide-react';
 
 interface StockHealth {
@@ -48,28 +48,99 @@ export default function Analytics() {
     queryFn: () => api.get('/api/v1/analytics/stock-health'),
   });
 
-  const { data: expenses, isLoading: expLoading } = useQuery<any[]>({
-    queryKey: ['expense-trend'],
-    queryFn: () => api.get('/api/v1/analytics/expense-trend'),
-  });
 
   const { data: kpis } = useQuery<KPIs>({
     queryKey: ['analytics-kpis'],
     queryFn: () => api.get('/api/v1/analytics/kpis'),
   });
 
+  const { data: finance, isLoading: finLoading } = useQuery<any>({
+    queryKey: ['financial-performance'],
+    queryFn: () => api.get('/api/v1/analytics/financial-performance'),
+  });
+
   const criticalItems = health?.filter(h => h.risk_level === 'critical') ?? [];
+
+  const handleExport = async () => {
+    try {
+      const blob = await exportFinancialReport();
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `relatorio_financeiro_${new Date().toISOString().split('T')[0]}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+    } catch (error) {
+      console.error("Export error:", error);
+    }
+  };
+
+  const handleExportInventory = async () => {
+    try {
+      const blob = await exportInventoryReport();
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `estoque_atual_${new Date().toISOString().split('T')[0]}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+    } catch (error) {
+      console.error("Inventory export error:", error);
+    }
+  };
+
+  const handleExportMovements = async () => {
+    try {
+      const blob = await exportMovementsReport();
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `historico_movimentacoes_${new Date().toISOString().split('T')[0]}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+    } catch (error) {
+      console.error("Movements export error:", error);
+    }
+  };
 
   return (
     <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
 
       {/* Header */}
-      <div className="flex flex-col gap-1">
-        <div className="flex items-center gap-3">
-          <Activity className="h-7 w-7 text-indigo-400" />
-          <h1 className="text-3xl font-bold tracking-tight">Inteligência Preditiva</h1>
+      <div className="flex flex-row items-center justify-between">
+        <div className="flex flex-col gap-1">
+          <div className="flex items-center gap-3">
+            <Activity className="h-7 w-7 text-indigo-400" />
+            <h1 className="text-3xl font-bold tracking-tight">Inteligência Preditiva</h1>
+          </div>
+          <p className="text-muted-foreground">Análise de saúde do estoque e previsões de ruptura em tempo real.</p>
         </div>
-        <p className="text-muted-foreground">Análise de saúde do estoque e previsões de ruptura em tempo real.</p>
+        <div className="flex gap-2">
+          <button 
+            onClick={handleExportInventory}
+            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-green-500/10 border border-green-500/20 hover:bg-green-500/20 transition-all text-xs font-medium text-green-400"
+          >
+            <Download size={14} />
+            Estoque (CSV)
+          </button>
+          <button 
+            onClick={handleExportMovements}
+            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-indigo-500/10 border border-indigo-500/20 hover:bg-indigo-500/20 transition-all text-xs font-medium text-indigo-400"
+          >
+            <Download size={14} />
+            Histórico (CSV)
+          </button>
+          <button 
+            onClick={handleExport}
+            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 transition-all text-xs font-medium"
+          >
+            <Download size={14} />
+            Financeiro (CSV)
+          </button>
+        </div>
       </div>
 
       {/* AI Insight */}
@@ -79,28 +150,28 @@ export default function Analytics() {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {[
           {
-            label: 'Saúde Geral',
-            value: kpis ? `${kpis.health_score}%` : '...',
+            label: 'Margem Bruta',
+            value: finance ? formatCurrency(finance.gross_margin_estimate) : '...',
+            icon: TrendingUp,
+            color: 'text-indigo-400',
+            bg: 'bg-indigo-500/10',
+            sub: 'lucro bruto estimado',
+          },
+          {
+            label: 'Patrimônio em Estoque',
+            value: finance ? formatCurrency(finance.total_assets) : '...',
             icon: ShieldCheck,
             color: 'text-green-400',
             bg: 'bg-green-500/10',
-            sub: 'do inventário está OK',
+            sub: 'valor de compra total',
           },
           {
-            label: 'Itens Críticos',
+            label: 'Rupturas',
             value: kpis?.critical_items ?? '...',
             icon: Flame,
             color: 'text-red-400',
             bg: 'bg-red-500/10',
-            sub: 'risco de ruptura iminente',
-          },
-          {
-            label: 'Itens em Alerta',
-            value: kpis?.warning_items ?? '...',
-            icon: AlertTriangle,
-            color: 'text-amber-400',
-            bg: 'bg-amber-500/10',
-            sub: 'reposição recomendada',
+            sub: 'itens esgotados',
           },
           {
             label: 'Gasto Mensal',
@@ -155,30 +226,35 @@ export default function Analytics() {
 
       {/* Charts row */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Expense Trend */}
+        {/* Financial Performance Chart */}
         <Card className="border-white/5 bg-zinc-950/50">
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-base">
-              <TrendingUp size={16} className="text-indigo-400" /> Tendência de Despesas (6 meses)
+              <TrendingUp size={16} className="text-indigo-400" /> Lucratividade (Receita vs Custo)
             </CardTitle>
           </CardHeader>
           <CardContent>
-            {expLoading ? (
-              <div className="h-52 flex items-center justify-center text-muted-foreground animate-pulse">Calculando...</div>
+            {finLoading ? (
+              <div className="h-52 flex items-center justify-center text-muted-foreground animate-pulse">Analisando histórico...</div>
             ) : (
               <ResponsiveContainer width="100%" height={220}>
-                <AreaChart data={expenses ?? []}>
+                <AreaChart data={finance?.monthly_breakdown ?? []}>
                   <defs>
-                    <linearGradient id="expGrad" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%"  stopColor="#8b5cf6" stopOpacity={0.3} />
-                      <stop offset="95%" stopColor="#8b5cf6" stopOpacity={0} />
+                    <linearGradient id="revenueGrad" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%"  stopColor="#22c55e" stopOpacity={0.3} />
+                      <stop offset="95%" stopColor="#22c55e" stopOpacity={0} />
+                    </linearGradient>
+                    <linearGradient id="costGrad" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%"  stopColor="#ef4444" stopOpacity={0.3} />
+                      <stop offset="95%" stopColor="#ef4444" stopOpacity={0} />
                     </linearGradient>
                   </defs>
                   <CartesianGrid strokeDasharray="3 3" className="stroke-white/5" />
                   <XAxis dataKey="month" tick={{ fontSize: 10 }} />
                   <YAxis tickFormatter={(v) => `R$${(v/1000).toFixed(0)}k`} tick={{ fontSize: 10 }} />
                   <Tooltip formatter={(v: number) => formatCurrency(v)} />
-                  <Area type="monotone" dataKey="total" stroke="#8b5cf6" fill="url(#expGrad)" strokeWidth={2} />
+                  <Area type="monotone" dataKey="revenue" name="Receita" stroke="#22c55e" fill="url(#revenueGrad)" strokeWidth={2} />
+                  <Area type="monotone" dataKey="cost" name="Custo" stroke="#ef4444" fill="url(#costGrad)" strokeWidth={2} />
                 </AreaChart>
               </ResponsiveContainer>
             )}

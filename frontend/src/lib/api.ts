@@ -1,3 +1,4 @@
+/// <reference types="vite/client" />
 /**
  * SFCPC API Client
  * Connects to the Python/FastAPI backend at VITE_API_URL.
@@ -38,6 +39,7 @@ export interface ProductSchema {
   current_stock?: number;
   min_stock?: number;
   status?: string;
+  modelo_caminhao?: string;
 }
 
 export interface StockBalanceSchema {
@@ -102,10 +104,20 @@ async function apiFetch<T>(
   if (_token) { headers["Authorization"] = `Bearer ${_token}`; }
   const res = await fetch(`${BASE_URL}${path}`, { ...options, headers });
   if (!res.ok) {
-    const error = await res.json().catch(() => ({ detail: res.statusText }));
-    throw new Error(error.detail ?? `HTTP ${res.status}`);
+    const errorBody = await res.json().catch(() => ({ detail: res.statusText }));
+    const msg = errorBody.detail || errorBody.message || errorBody.error || `Erro ${res.status}`;
+    if (res.status === 422 && Array.isArray(msg)) {
+        throw new Error(msg.map((d: any) => `${d.loc.join('.')}: ${d.msg}`).join(", "));
+    }
+    throw new Error(typeof msg === 'string' ? msg : JSON.stringify(msg));
   }
   if (res.status === 204) return undefined as T;
+  
+  const contentType = res.headers.get("content-type");
+  if (contentType && (contentType.includes("application/octet-stream") || contentType.includes("text/csv"))) {
+    return res.blob() as unknown as Promise<T>;
+  }
+
   return res.json() as Promise<T>;
 }
 
@@ -116,8 +128,10 @@ async function apiFetch<T>(
 export const api = {
   post: <T = any>(path: string, body: unknown): Promise<T> =>
     apiFetch<T>(path, { method: "POST", body: JSON.stringify(body) }),
-  get: <T = any>(path: string): Promise<T> =>
-    apiFetch<T>(path),
+  get: <T = any>(path: string, options: RequestInit = {}): Promise<T> =>
+    apiFetch<T>(path, options),
+  delete: <T = any>(path: string): Promise<T> =>
+    apiFetch<T>(path, { method: "DELETE" }),
 };
 
 // ---------------------------------------------------------------------------
@@ -218,6 +232,18 @@ export async function processMovementAI(
 // ---------------------------------------------------------------------------
 // Health
 // ---------------------------------------------------------------------------
+
+export async function exportFinancialReport(): Promise<Blob> {
+  return api.get<Blob>('/api/v1/analytics/export/financial');
+}
+
+export async function exportInventoryReport(): Promise<Blob> {
+  return api.get<Blob>('/api/v1/analytics/export/inventory');
+}
+
+export async function exportMovementsReport(): Promise<Blob> {
+  return api.get<Blob>('/api/v1/analytics/export/movements');
+}
 
 export async function healthCheck() {
   return apiFetch<{ status: string; service: string; version: string }>("/");

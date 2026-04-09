@@ -1,81 +1,99 @@
-"""Integration-style tests for StockService using an in-memory SQLite DB.
-
-These tests use pytest-asyncio and a real (async) SQLAlchemy session backed
-by aiosqlite so they can run in CI without a live PostgreSQL instance.
+"""Refactored StockService Tests — V2.
+Uses the current SQLAlchemy mapping and StockService logic.
 """
-import os
 import pytest
 import pytest_asyncio
 from uuid import uuid4
-from unittest.mock import AsyncMock, patch
+from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
+from db.orm_models import Base, ProductORM, StockBalanceORM
+from services.stock_service import StockService
+from models.entities import MovementSchema, MovementType, ProductCategory
 
-os.environ.setdefault("JWT_SECRET_KEY", "test-secret")
-os.environ.setdefault("DATABASE_URL", "sqlite+aiosqlite:///:memory:")
+# Use in-memory SQLite for tests
+DB_URL = "sqlite+aiosqlite:///:memory:"
 
-from models.entities import MovementSchema, MovementType, ProductSchema
-from auth.tenant_context import set_tenant_id
+@pytest_asyncio.fixture
+async def engine():
+    engine = create_async_engine(DB_URL)
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    yield engine
+    await engine.dispose()
 
-
-TENANT_ID = uuid4()
-PRODUCT_ID = uuid4()
-
-
-@pytest.fixture(autouse=True)
-def set_test_tenant():
-    set_tenant_id(TENANT_ID)
-
-
-# ---------------------------------------------------------------------------
-# StockService.process_movement (mocked repo)
-# ---------------------------------------------------------------------------
+@pytest_asyncio.fixture
+async def session(engine):
+    AsyncSessionLocal = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    async with AsyncSessionLocal() as session:
+        yield session
 
 @pytest.mark.asyncio
-async def test_entry_increases_balance():
-    """An ENTRY movement must increase the stock balance."""
-    product = ProductSchema(
-        id=PRODUCT_ID, tenant_id=TENANT_ID,
-        code="TEST-001", description="Test Foam", unit="un", min_stock=5.0
+async def test_process_movement_entry(session):
+    tenant_id = uuid4()
+    product_id = uuid4()
+    
+    # Setup: Create product
+    new_product = ProductORM(
+        id=product_id,
+        tenant_id=tenant_id,
+        code="TEST-FOAM",
+        description="Espuma D33 para Caminhão Scania",
+        unit="un",
+        category=ProductCategory.FOAM,
+        is_active=True
     )
-    initial_balance_orm = type("B", (), {"balance": 10.0, "tenant_id": TENANT_ID,
-                                          "product_id": PRODUCT_ID,
-                                          "batch_id": None, "location_id": None})()
+    session.add(new_product)
+    await session.commit()
+
+    # Movement: Entry of 10 units
     movement = MovementSchema(
-        id=uuid4(), tenant_id=TENANT_ID, product_id=PRODUCT_ID,
-        type=MovementType.ENTRY, quantity=5.0
+        id=uuid4(),
+        tenant_id=tenant_id,
+        product_id=product_id,
+        type=MovementType.ENTRY,
+        quantity=10.0
     )
 
-    mock_session = AsyncMock()
-    with patch("services.stock_service.StockService._get_product", return_value=product), \
-         patch("services.stock_service.StockService._get_or_create_balance",
-               return_value=initial_balance_orm), \
-         patch("services.stock_service.StockService._save_movement"):
-        from services.stock_service import StockService
-        balance = await StockService(mock_session).process_movement(movement)
+    # Execute
+    balance = await StockService.process_movement(movement, session)
+    await session.commit()
 
-    assert balance.balance == 15.0
-
+    # Verify
+    assert balance.balance == 10.0
+    
+    # Check if a second entry accumulates
+    move2 = MovementSchema(
+        id=uuid4(),
+        tenant_id=tenant_id,
+        product_id=product_id,
+        type=MovementType.ENTRY,
+        quantity=5.5
+    )
+    balance2 = await StockService.process_movement(move2, session)
+    assert balance2.balance == 15.5
 
 @pytest.mark.asyncio
-async def test_exit_below_zero_raises_400():
-    """An EXIT exceeding available stock must raise HTTP 400."""
+async def test_process_movement_exit_insufficient(session):
+    tenant_id = uuid4()
+    product_id = uuid4()
+    
+    # Create product
+    new_product = ProductORM(
+        id=product_id, tenant_id=tenant_id, code="TEST", description="..", unit="..", is_active=True
+    )
+    session.add(new_product)
+    await session.commit()
+
+    # Try exit of 10 units when balance is 0
+    movement = MovementSchema(
+        id=uuid4(),
+        tenant_id=tenant_id,
+        product_id=product_id,
+        type=MovementType.EXIT,
+        quantity=10.0
+    )
+
     from fastapi import HTTPException
-    product = ProductSchema(
-        id=PRODUCT_ID, tenant_id=TENANT_ID,
-        code="TEST-001", description="Test Foam", unit="un", min_stock=0.0
-    )
-    balance_orm = type("B", (), {"balance": 2.0, "tenant_id": TENANT_ID,
-                                   "product_id": PRODUCT_ID,
-                                   "batch_id": None, "location_id": None})()
-    movement = MovementSchema(
-        id=uuid4(), tenant_id=TENANT_ID, product_id=PRODUCT_ID,
-        type=MovementType.EXIT, quantity=10.0
-    )
-
-    mock_session = AsyncMock()
-    with patch("services.stock_service.StockService._get_product", return_value=product), \
-         patch("services.stock_service.StockService._get_or_create_balance",
-               return_value=balance_orm):
-        from services.stock_service import StockService
-        with pytest.raises(HTTPException) as exc:
-            await StockService(mock_session).process_movement(movement)
-        assert exc.value.status_code == 400
+    with pytest.raises(HTTPException) as exc:
+        await StockService.process_movement(movement, session)
+    assert exc.value.status_code == 400
+    assert "Insufficient stock" in exc.value.detail

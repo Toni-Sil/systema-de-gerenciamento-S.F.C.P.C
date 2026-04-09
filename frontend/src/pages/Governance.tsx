@@ -11,10 +11,12 @@ import {
   Clock, 
   BrainCircuit,
   ArrowRightLeft,
-  Package
+  Package,
+  DollarSign
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
+import { formatCurrency } from '@/lib/utils';
 
 interface PendingAction {
   id: string;
@@ -97,8 +99,12 @@ export default function Governance() {
                     <div>
                         <p className="text-[10px] uppercase font-bold text-white/40 mb-1">Ação Detectada</p>
                         <div className="flex items-center gap-2 font-bold text-lg">
-                            {action.action_type === 'Entry' ? <Package className="text-green-400" /> : <ArrowRightLeft className="text-orange-400" />}
-                            {action.action_type === 'Entry' ? 'Entrada de Mercadoria' : 'Saída de Estoque'}
+                            {action.action_type === 'Entry' ? <Package className="text-green-400" /> : 
+                             action.action_type === 'RegisterExpense' ? <DollarSign className="text-blue-400" /> : 
+                             <ArrowRightLeft className="text-orange-400" />}
+                            {action.action_type === 'Entry' ? 'Entrada de Mercadoria' : 
+                             action.action_type === 'RegisterExpense' ? 'Despesa Financeira' : 
+                             'Saída de Estoque'}
                         </div>
                     </div>
                     <div className="p-3 rounded-xl bg-white/5 border border-white/5 text-xs italic text-muted-foreground">
@@ -113,14 +119,26 @@ export default function Governance() {
                         <span className="text-sm font-semibold uppercase tracking-wider">Sugestão da Inteligência</span>
                      </div>
                      
-                     <div className="grid grid-cols-2 gap-4">
+                      <div className="grid grid-cols-2 gap-4">
                         <div className="space-y-1">
-                           <p className="text-[10px] uppercase text-white/40">Produto</p>
-                           <p className="font-medium">{action.proposed_params?.product || 'Não identificado'}</p>
+                           <p className="text-[10px] uppercase text-white/40">
+                             {action.action_type === 'RegisterExpense' ? 'Fornecedor' : 'Produto'}
+                           </p>
+                           <p className="font-medium">
+                             {action.action_type === 'RegisterExpense' ? 
+                              (action.proposed_params?.supplier || 'Não identificado') : 
+                              (action.proposed_params?.product || 'Não identificado')}
+                           </p>
                         </div>
                         <div className="space-y-1">
-                           <p className="text-[10px] uppercase text-white/40">Quantidade</p>
-                           <p className="text-2xl font-bold">{action.proposed_params?.quantity || 0}</p>
+                           <p className="text-[10px] uppercase text-white/40">
+                             {action.action_type === 'RegisterExpense' ? 'Valor' : 'Quantidade'}
+                           </p>
+                           <p className="text-2xl font-bold">
+                             {action.action_type === 'RegisterExpense' ? 
+                              formatCurrency(action.proposed_params?.value || 0) : 
+                              (action.proposed_params?.quantity || 0)}
+                           </p>
                         </div>
                      </div>
 

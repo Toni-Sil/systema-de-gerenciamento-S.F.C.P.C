@@ -65,6 +65,54 @@ class LLMTools:
         except Exception as e:
             return json.dumps({"status": "error", "message": str(e)})
 
+    @staticmethod
+    async def report_low_stock(tenant_id: UUID, product_code: str, session: AsyncSession) -> str:
+        """
+        Gera um alerta manual de estoque baixo baseado em observação física.
+        """
+        try:
+            result = await session.execute(
+                select(ProductORM).where(
+                    ProductORM.code == product_code,
+                    ProductORM.tenant_id == tenant_id
+                )
+            )
+            product = result.scalar_one_or_none()
+            if not product:
+                return json.dumps({"status": "error", "message": f"Produto {product_code} não encontrado."})
+            
+            product.is_manual_low_stock = True
+            await session.flush()
+            return json.dumps({"status": "success", "message": f"Alerta de falta do material '{product.description}' registrado MANUALMENTE."})
+        except Exception as e:
+            return json.dumps({"status": "error", "message": str(e)})
+
+    @staticmethod
+    async def get_abc_analysis(tenant_id: UUID, session: AsyncSession) -> str:
+        """
+        Calcula a curva ABC dos produtos baseada no valor e volume.
+        """
+        try:
+            from ml.abc_analysis import ABCAnalysis
+            summary = await GoldLayerService.get_inventory_summary(tenant_id, session)
+            analysis = ABCAnalysis.calculate(summary)
+            return json.dumps({"status": "success", "data": analysis})
+        except Exception as e:
+            return json.dumps({"status": "error", "message": str(e)})
+
+    @staticmethod
+    async def get_demand_forecast(tenant_id: UUID, days: int, session: AsyncSession) -> str:
+        """
+        Prediz a demanda futura baseada no histórico de movimentações.
+        """
+        try:
+            from ml.demand_forecasting import DemandForecasting
+            history = await GoldLayerService.get_movement_history(tenant_id, session)
+            prediction = DemandForecasting.predict_next_period(history, days=days)
+            return json.dumps({"status": "success", "data": prediction})
+        except Exception as e:
+            return json.dumps({"status": "error", "message": str(e)})
+
 
 class FinancialTools:
     """Ferramentas de IA para o módulo financeiro."""
@@ -146,4 +194,18 @@ class ServiceOrderTools:
         res = await ServiceOrderService.create_order(
             tenant_id, session, client_id, description, priority, furniture_type, fabric
         )
+        return json.dumps(res)
+
+    @staticmethod
+    async def list_orders(tenant_id: UUID, session: Any) -> str:
+        """Retorna uma lista resumida das Ordens de Serviço abertas para ajudar o atendente."""
+        from services.service_order_service import ServiceOrderService
+        res = await ServiceOrderService.list_orders(tenant_id, session)
+        return json.dumps(res)
+
+    @staticmethod
+    async def check_order(tenant_id: UUID, order_id: str, session: AsyncSession) -> str:
+        """Verifica o status atual de uma Ordem de Serviço específica."""
+        from services.service_order_service import ServiceOrderService
+        res = await ServiceOrderService.get_order_details(tenant_id, session, order_id)
         return json.dumps(res)

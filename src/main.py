@@ -19,10 +19,11 @@ from uuid import UUID
 
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Query, UploadFile, APIRouter
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel
 
-from auth.jwt_handler import verify_jwt_token
+from sqlalchemy import select
+from auth.jwt_handler import verify_jwt_token, verify_admin
 from auth.tenant_context import get_tenant_id
 from db.session import get_session
 from messaging.event_bus import event_bus
@@ -45,6 +46,7 @@ from services.stock_service import StockService
 from services.user_service import UserService
 from routes.whatsapp_router import router as whatsapp_router
 from routes.ai_input import router as ai_input_router
+from routes.webhooks import router as webhooks_router
 from services.scheduler_service import SchedulerService
 
 logging.basicConfig(
@@ -76,7 +78,8 @@ async def lifespan(app: FastAPI):
     async with AsyncSessionLocal() as session:
         result = await session.execute(select(TenantORM).limit(1))
         if not result.scalar_one_or_none():
-            default_id = "e1f2b3c4-d5e6-4e5a-8b9c-d0e1f2a3b4c5"
+            import uuid
+            default_id = uuid.UUID("e1f2b3c4-d5e6-4e5a-8b9c-d0e1f2a3b4c5")
             new_tenant = TenantORM(
                 id=default_id, 
                 name="S.F.C.P.C Matriz", 
@@ -131,6 +134,7 @@ app.add_middleware(
 # Routers
 app.include_router(whatsapp_router)
 app.include_router(ai_input_router)
+app.include_router(webhooks_router)
 
 _auth = Depends(verify_jwt_token)
 
@@ -186,8 +190,12 @@ async def list_products(
 
 
 @v1_router.post("/inventory", response_model=ProductSchema, tags=["Inventory"], status_code=201)
-async def create_product(product: ProductSchema):
+async def create_product(
+    product: ProductSchema,
+    tenant_id: UUID = Depends(get_validated_tenant_id)
+):
     async with get_session() as session:
+        product.tenant_id = tenant_id
         from db.orm_models import ProductORM
         from db.base_repository import BaseRepository
         repo = BaseRepository(ProductORM, session)
@@ -395,20 +403,139 @@ async def get_analytics_kpis(tenant_id: UUID = Depends(get_validated_tenant_id))
     async with get_session() as session:
         return await PredictiveService.get_summary_kpis(tenant_id, session)
 
+
+@v1_router.get("/analytics/financial-performance", tags=["Analytics"])
+async def get_financial_performance(tenant_id: UUID = Depends(get_validated_tenant_id)):
+    from data.gold_service import GoldLayerService
+    async with get_session() as session:
+        return await GoldLayerService.get_financial_dashboard(tenant_id, session)
+
     
 
-# --- Settings ---
+@v1_router.get("/analytics/export/financial", tags=["Analytics"])
+async def export_financial_csv(tenant_id: UUID = Depends(get_validated_tenant_id)):
+    """Exports financial expenses to CSV for use in spreadsheets."""
+    import io
+    import csv
+    from db.orm_models import ExpenseORM
+    
+    async with get_session() as session:
+        result = await session.execute(
+            select(ExpenseORM).where(ExpenseORM.tenant_id == tenant_id).order_by(ExpenseORM.expense_date.desc())
+        )
+        expenses = result.scalars().all()
+        
+        output = io.StringIO()
+        writer = csv.writer(output)
+        writer.writerow(["ID", "Data", "Descricao", "Fornecedor", "Categoria", "Valor"])
+        
+        for e in expenses:
+            writer.writerow([
+                str(e.id), 
+                str(e.expense_date), 
+                e.description or "", 
+                e.supplier or "", 
+                e.category.value if hasattr(e.category, 'value') else str(e.category), 
+                e.value
+            ])
+        
+        output.seek(0)
+        return StreamingResponse(
+            iter([output.getvalue()]),
+            media_type="text/csv",
+            headers={"Content-Disposition": f"attachment; filename=relatorio_financeiro_{tenant_id}.csv"}
+        )
+
+
+@v1_router.get("/analytics/export/inventory", tags=["Analytics"])
+async def export_inventory_csv(tenant_id: UUID = Depends(get_validated_tenant_id)):
+    """Exports current inventory levels to CSV."""
+    import io
+    import csv
+    from data.gold_service import GoldLayerService
+    
+    async with get_session() as session:
+        inventory = await GoldLayerService.get_inventory_summary(tenant_id, session)
+        
+        output = io.StringIO()
+        writer = csv.writer(output)
+        writer.writerow(["Codigo", "Descricao", "Categoria", "Saldo Atual", "Estoque Minimo", "Status", "Valor em Estoque"])
+        
+        for item in inventory:
+            status = "CRITICO" if item["is_low_stock"] else "OK"
+            writer.writerow([
+                item["code"], 
+                item["description"], 
+                item["category"] or "", 
+                item["total_balance"], 
+                item["min_stock"],
+                status,
+                item["asset_value"]
+            ])
+        
+        output.seek(0)
+        return StreamingResponse(
+            iter([output.getvalue()]),
+            media_type="text/csv",
+            headers={"Content-Disposition": f"attachment; filename=estoque_atual_{tenant_id}.csv"}
+        )
+
+
+@v1_router.get("/analytics/export/movements", tags=["Analytics"])
+async def export_movements_csv(tenant_id: UUID = Depends(get_validated_tenant_id)):
+    """Exports stock movement history to CSV."""
+    import io
+    import csv
+    from db.orm_models import StockMovementORM, ProductORM
+    
+    async with get_session() as session:
+        result = await session.execute(
+            select(StockMovementORM, ProductORM.code, ProductORM.description)
+            .join(ProductORM, StockMovementORM.product_id == ProductORM.id)
+            .where(StockMovementORM.tenant_id == tenant_id)
+            .order_by(StockMovementORM.created_at.desc())
+        )
+        movements = result.all()
+        
+        output = io.StringIO()
+        writer = csv.writer(output)
+        writer.writerow(["Data", "Codigo", "Produto", "Tipo", "Quantidade", "Documento", "Notas"])
+        
+        for m, code, desc in movements:
+            writer.writerow([
+                m.created_at.isoformat(),
+                code,
+                desc,
+                m.type.value,
+                m.quantity,
+                m.reference_doc or "",
+                m.notes or ""
+            ])
+        
+        output.seek(0)
+        return StreamingResponse(
+            iter([output.getvalue()]),
+            media_type="text/csv",
+            headers={"Content-Disposition": f"attachment; filename=historico_movimentacao_{tenant_id}.csv"}
+        )
 
 class SettingsUpdateSchema(BaseModel):
     llm_provider: str
     gemini_api_key: Optional[str] = None
+    gemini_model: Optional[str] = None
     ollama_url: Optional[str] = None
     ollama_model: Optional[str] = None
+    openai_api_key: Optional[str] = None
+    openai_model: Optional[str] = None
+    anthropic_api_key: Optional[str] = None
+    anthropic_model: Optional[str] = None
+    groq_api_key: Optional[str] = None
+    groq_model: Optional[str] = None
     service_order_url: Optional[str] = None
     service_order_api_key: Optional[str] = None
 
 
-@v1_router.get("/settings", tags=["Settings"])
+@v1_router.get("/settings", tags=["Settings"], dependencies=[Depends(verify_admin)])
 async def get_settings(tenant_id: UUID = Depends(get_validated_tenant_id)):
     async with get_session() as session:
         from db.orm_models import TenantSettingsORM
@@ -426,9 +553,16 @@ async def get_settings(tenant_id: UUID = Depends(get_validated_tenant_id)):
             }
         return {
             "llm_provider": settings.llm_provider,
-            "gemini_api_key": "***" if settings.gemini_api_key else None, # Obscure keys
+            "gemini_api_key": "***" if settings.gemini_api_key else None,
+            "gemini_model": settings.gemini_model,
             "ollama_url": settings.ollama_url,
             "ollama_model": settings.ollama_model,
+            "openai_api_key": "***" if settings.openai_api_key else None,
+            "openai_model": settings.openai_model,
+            "anthropic_api_key": "***" if settings.anthropic_api_key else None,
+            "anthropic_model": settings.anthropic_model,
+            "groq_api_key": "***" if settings.groq_api_key else None,
+            "groq_model": settings.groq_model,
             "service_order_url": settings.service_order_url,
             "service_order_api_key": "***" if settings.service_order_api_key else None
         }
@@ -454,6 +588,24 @@ async def update_settings(
         # Only update key if actual new key is provided (not the *** placeholder)
         if data.gemini_api_key and data.gemini_api_key != "***":
             settings.gemini_api_key = data.gemini_api_key
+        if data.gemini_model:
+            settings.gemini_model = data.gemini_model
+        
+        if data.openai_api_key and data.openai_api_key != "***":
+            settings.openai_api_key = data.openai_api_key
+        if data.openai_model:
+            settings.openai_model = data.openai_model
+            
+        if data.anthropic_api_key and data.anthropic_api_key != "***":
+            settings.anthropic_api_key = data.anthropic_api_key
+        if data.anthropic_model:
+            settings.anthropic_model = data.anthropic_model
+            
+        if data.groq_api_key and data.groq_api_key != "***":
+            settings.groq_api_key = data.groq_api_key
+        if data.groq_model:
+            settings.groq_model = data.groq_model
+
         settings.ollama_url = data.ollama_url
         settings.ollama_model = data.ollama_model
         settings.service_order_url = data.service_order_url
@@ -464,9 +616,21 @@ async def update_settings(
         return {"status": "success"}
 
 
+# --- External Systems ---
+
+@v1_router.get("/external/orders", tags=["External"])
+async def get_external_orders(
+    tenant_id: UUID = Depends(get_validated_tenant_id),
+):
+    """Retorna ordens do sistema externo para o dashboard."""
+    from services.service_order_service import ServiceOrderService
+    async with get_session() as session:
+        return await ServiceOrderService.list_orders(tenant_id, session)
+
+
 # --- Governance ---
 
-@v1_router.get("/governance/pending", tags=["Governance"])
+@v1_router.get("/governance/pending", tags=["Governance"], dependencies=[Depends(verify_admin)])
 async def list_pending_actions(tenant_id: UUID = Depends(get_validated_tenant_id)):
     async with get_session() as session:
         from db.orm_models import PendingActionORM
@@ -524,6 +688,39 @@ async def reject_action(
         return {"status": "success"}
 
 
+# --- User Management (Team) ---
+
+@v1_router.get("/users", response_model=List[UserSchema], tags=["Team"], dependencies=[Depends(verify_admin)])
+async def list_team_members(tenant_id: UUID = Depends(get_validated_tenant_id)):
+    async with get_session() as session:
+        from db.orm_models import UserORM
+        from sqlalchemy import select
+        result = await session.execute(
+            select(UserORM).where(UserORM.tenant_id == tenant_id)
+        )
+        return result.scalars().all()
+
+
+@v1_router.post("/users", response_model=UserSchema, tags=["Team"], dependencies=[Depends(verify_admin)])
+async def add_team_member(data: UserCreateSchema):
+    async with get_session() as session:
+        return await UserService.register(data, session)
+
+
+@v1_router.delete("/users/{user_id}", tags=["Team"], dependencies=[Depends(verify_admin)])
+async def remove_team_member(user_id: UUID, tenant_id: UUID = Depends(get_validated_tenant_id)):
+    async with get_session() as session:
+        from db.orm_models import UserORM
+        user = await session.get(UserORM, user_id)
+        if not user or str(user.tenant_id) != str(tenant_id):
+            raise HTTPException(status_code=404)
+        if user.role == "admin":
+             raise HTTPException(status_code=400, detail="Não é possível remover administradores via painel.")
+        await session.delete(user)
+        await session.commit()
+        return {"status": "success"}
+
+
 # --- Agent ---
 
 class ChatMessage(BaseModel):
@@ -574,6 +771,17 @@ async def upload_financial_document(
         "ocr_preview": extracted_text[:150] + "..." if len(extracted_text) > 150 else extracted_text,
         "agent_decision": reply_json,
     }
+
+
+@v1_router.get("/financial/summary", tags=["Finance"])
+async def get_financial_summary(
+    tenant_id: UUID = Depends(get_validated_tenant_id),
+):
+    """Retorna resumo financeiro consolidado (Gold Layer)."""
+    from data.gold_service import GoldLayerService
+    async with get_session() as session:
+        dashboard = await GoldLayerService.get_financial_dashboard(tenant_id, session)
+        return dashboard
 
 
 

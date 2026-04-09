@@ -41,11 +41,14 @@ export default function Register() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background px-4">
-      <Card className="w-full max-w-sm">
-        <CardHeader className="text-center">
-          <CardTitle className="text-2xl font-bold gradient-text">Começar Agora</CardTitle>
-          <CardDescription>Crie sua empresa no S.F.C.P.C</CardDescription>
+    <div className="min-h-[100dvh] flex items-center justify-center bg-background px-4">
+      <Card className="w-full max-w-sm border-none bg-zinc-950/50 backdrop-blur-xl shadow-2xl relative noise overflow-hidden">
+        <CardHeader className="text-center pt-8">
+          <div className="mx-auto w-20 h-20 mb-4 rounded-full border-2 border-primary p-2 bg-white shadow-xl float flex items-center justify-center overflow-hidden">
+            <img src="/assets/logo.png" alt="Logo" className="w-full h-full object-contain drop-shadow-sm rounded-full" />
+          </div>
+          <CardTitle className="text-2xl font-black text-white">Começar Agora</CardTitle>
+          <CardDescription className="text-primary font-bold uppercase tracking-widest text-[10px]">S.F.C.P.C — Gestão de Sofás para Caminhões</CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">

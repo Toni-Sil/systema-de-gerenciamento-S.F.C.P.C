@@ -64,3 +64,11 @@ def get_current_tenant_from_token(
         return UUID(tenant_id_str)
     except ValueError:
         raise HTTPException(status_code=403, detail="Malformed tenant_id in token")
+
+
+def verify_admin(payload: dict = Security(verify_jwt_token)) -> dict:
+    """Dependency to restrict access to ADMIN users only."""
+    if payload.get("role") != "admin":
+        logger.warning(f"Unauthorized access attempt by user {payload.get('user_id')} with role {payload.get('role')}")
+        raise HTTPException(status_code=403, detail="Apenas administradores podem realizar esta ação.")
+    return payload

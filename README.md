@@ -57,8 +57,7 @@ O **S.F.C.P.C** é um ERP leve e modular para gestão de estoque industrial, pro
 - 🏷️ **Análise ABC** — Classificação automática de produtos por valor
 - 📷 **OCR de Notas** — Leitura automática de notas fiscais via Gemini Vision
 - 🏢 **Multi-tenant** — Isolamento completo por empresa
-- 📈 **Relatórios PDF** — Geração automática com agendamento semanal
-- 🔐 **Autenticação JWT** — Login seguro com refresh tokens
+- 📈 **Relatórios Dinâmicos** — Exportação instantânea de Estoque e Financeiro para CSV (Excel)
 - 📡 **Prometheus + Grafana** — Métricas de performance e negócio
 
 ---

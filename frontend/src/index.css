@@ -7,78 +7,80 @@
 @layer base {
   :root {
     /* --- Premium Color Palette (HSL Curated) --- */
-    --background: 0 0% 99%;
-    --foreground: 224 25% 10%;
+    /* --- Brand Identity: Red & Navy --- */
+    --background: 210 20% 98%;
+    --foreground: 212 32% 16%;
 
     --card: 0 0% 100%;
-    --card-foreground: 224 25% 10%;
+    --card-foreground: 212 32% 16%;
 
     --popover: 0 0% 100%;
-    --popover-foreground: 224 25% 10%;
+    --popover-foreground: 212 32% 16%;
 
-    --primary: 251 86% 62%;
+    --primary: 358 78% 51%; /* Logo Red */
     --primary-foreground: 0 0% 100%;
 
-    --secondary: 220 14% 95%;
-    --secondary-foreground: 224 25% 10%;
+    --secondary: 212 10% 90%;
+    --secondary-foreground: 212 32% 16%;
 
-    --muted: 220 14% 95%;
-    --muted-foreground: 220 12% 50%;
+    --muted: 212 10% 92%;
+    --muted-foreground: 212 15% 45%;
 
-    --accent: 251 40% 94%;
-    --accent-foreground: 251 60% 40%;
+    --accent: 358 78% 95%;
+    --accent-foreground: 358 78% 40%;
 
     --destructive: 0 84% 60%;
     --destructive-foreground: 0 0% 100%;
 
-    --border: 220 18% 91%;
-    --input: 220 18% 91%;
-    --ring: 251 86% 62%;
-    --radius: 0.75rem;
+    --border: 212 15% 90%;
+    --input: 212 15% 90%;
+    --ring: 358 78% 51%;
+    --radius: 1rem;
 
     --success: 145 65% 42%;
     --success-foreground: 0 0% 100%;
     --warning: 38 95% 52%;
     --warning-foreground: 0 0% 100%;
-    --info: 217 91% 60%;
+    --info: 212 78% 51%;
     --info-foreground: 0 0% 100%;
   }
 
   .dark {
     /* --- Pure Black + Indigo Accent — "Apple Pro" Dark --- */
-    --background: 0 0% 4%;
+    /* --- Dark Mode Brand: Midnight Navy & Deep Red --- */
+    --background: 212 45% 4%;
     --foreground: 210 30% 96%;
 
-    --card: 0 0% 6%;
+    --card: 212 35% 8%;
     --card-foreground: 210 30% 96%;
 
-    --popover: 0 0% 7%;
+    --popover: 212 35% 9%;
     --popover-foreground: 210 30% 96%;
 
-    --primary: 251 86% 62%;
+    --primary: 358 78% 51%;
     --primary-foreground: 0 0% 100%;
 
-    --secondary: 0 0% 10%;
+    --secondary: 212 25% 12%;
     --secondary-foreground: 210 20% 80%;
 
-    --muted: 0 0% 10%;
-    --muted-foreground: 215 14% 48%;
+    --muted: 212 20% 15%;
+    --muted-foreground: 215 14% 65%;
 
-    --accent: 251 30% 14%;
-    --accent-foreground: 251 80% 80%;
+    --accent: 358 78% 15%;
+    --accent-foreground: 358 78% 85%;
 
     --destructive: 0 72% 51%;
     --destructive-foreground: 0 0% 100%;
 
-    --border: 0 0% 13%;
-    --input: 0 0% 13%;
-    --ring: 251 86% 62%;
+    --border: 212 20% 20%;
+    --input: 212 20% 20%;
+    --ring: 358 78% 51%;
 
     --success: 145 60% 42%;
     --success-foreground: 0 0% 100%;
     --warning: 38 92% 50%;
     --warning-foreground: 0 0% 100%;
-    --info: 217 91% 60%;
+    --info: 212 78% 51%;
     --info-foreground: 0 0% 100%;
   }
 }

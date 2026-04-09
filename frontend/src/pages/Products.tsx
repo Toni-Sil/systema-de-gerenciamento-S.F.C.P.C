@@ -29,7 +29,19 @@ const emptyForm = {
   code: "", description: "", category: "Tecidos", unit: "metro",
   tonalidade: "", densidade: "", metragem: "", corredor: "", prateleira: "",
   validity: "", batch: "",
+  purchase_price: 0, sale_price: 0,
+  modelo_caminhao: "",
 };
+
+const truckModels = [
+  "Volvo FH 540", "Volvo FH 460", "Volvo VM 290", "Volvo VM 360",
+  "VW Delivery 11.180", "VW Delivery 9.180", "VW Delivery 13.180",
+  "VW Constellation 26.260", "VW Constellation 17.210", "VW Constellation 31.320",
+  "VW Meteor 28.480", "MB Accelo 1017", "MB Accelo 817", "MB Atego 1719",
+  "MB Atego 2429", "MB Actros 2548", "Scania R450", "Scania R460", "Scania R540",
+  "DAF XF 530", "DAF XF 480", "Iveco Tector", "Iveco Daily",
+  "Outros / Universal"
+];
 
 export default function Products() {
   const { toast } = useToast();
@@ -73,7 +85,18 @@ export default function Products() {
   const handleSave = async () => {
     if (!validate()) return;
     try {
-      await createProduct.mutateAsync(form as ProductSchema);
+      // Nest attributes correctly for the backend
+      const { tonalidade, densidade, metragem, modelo_caminhao, ...rest } = form;
+      const payload = {
+        ...rest,
+        attributes: {
+          tecido: form.category === "Tecidos" ? { tonalidade, metragem: parseFloat(metragem) || 0 } : undefined,
+          espuma: form.category === "Espumas" ? { densidade } : undefined,
+          modelo_caminhao: modelo_caminhao || undefined,
+        }
+      };
+      
+      await createProduct.mutateAsync(payload as any);
       toast({ title: "Produto cadastrado com sucesso!" });
       setDialogOpen(false);
     } catch (err) {
@@ -130,6 +153,19 @@ export default function Products() {
                 <div><Label>Data de Validade</Label><Input type="date" value={form.validity} onChange={(e) => setForm({ ...form, validity: e.target.value })} /></div>
                 <div><Label>Lote</Label><Input value={form.batch} onChange={(e) => setForm({ ...form, batch: e.target.value })} /></div>
               </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div><Label>Preço Compra (R$)</Label><Input type="number" step="0.01" value={form.purchase_price} onChange={(e) => setForm({ ...form, purchase_price: parseFloat(e.target.value) || 0 })} /></div>
+                <div><Label>Preço Venda (Sug.)</Label><Input type="number" step="0.01" value={form.sale_price} onChange={(e) => setForm({ ...form, sale_price: parseFloat(e.target.value) || 0 })} /></div>
+              </div>
+              <div>
+                <Label>Modelo de Caminhão Compatível</Label>
+                <Select value={form.modelo_caminhao} onValueChange={(v) => setForm({ ...form, modelo_caminhao: v })}>
+                  <SelectTrigger><SelectValue placeholder="Selecione o modelo" /></SelectTrigger>
+                  <SelectContent>
+                    {truckModels.map((m) => <SelectItem key={m} value={m}>{m}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
             <DialogFooter><Button onClick={handleSave} disabled={createProduct.isPending}>{createProduct.isPending ? "Salvando..." : "Cadastrar"}</Button></DialogFooter>
           </DialogContent>
@@ -167,6 +203,7 @@ export default function Products() {
                     <TableHead>Unidade</TableHead>
                     <TableHead>Localização</TableHead>
                     <TableHead>Estoque</TableHead>
+                    <TableHead>Compatibilidade</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead>Ações</TableHead>
                   </TableRow>
@@ -180,6 +217,11 @@ export default function Products() {
                       <TableCell>{p.unit}</TableCell>
                       <TableCell>{p.corredor}-{p.prateleira}</TableCell>
                       <TableCell>{p.current_stock ?? 0}</TableCell>
+                      <TableCell>
+                        <Badge variant="secondary" className="text-[10px]">
+                          {p.modelo_caminhao || "Universal"}
+                        </Badge>
+                      </TableCell>
                       <TableCell><Badge variant="outline" className={statusBadge(p.status)}>{p.status ?? "Normal"}</Badge></TableCell>
                       <TableCell>
                         <div className="flex gap-1">

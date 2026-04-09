@@ -12,7 +12,7 @@ from fastapi import HTTPException
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from db.orm_models import ExpenseORM, StockMovementORM
+from db.orm_models import ExpenseORM, StockMovementORM, ProductORM
 from models.entities import ExpenseCategory, ExpenseSchema, FinancialSummarySchema, MovementType
 
 logger = logging.getLogger(__name__)
@@ -74,9 +74,14 @@ class FinancialService:
         }
         total_expenses = round(sum(expenses_by_category.values()), 2)
 
-        # --- Movement quantities by type (proxy for value until price is stored) ---
+        # --- Movement values based on Product prices ---
         movement_rows = await session.execute(
-            select(StockMovementORM.type, func.sum(StockMovementORM.quantity).label("total"))
+            select(
+                StockMovementORM.type, 
+                func.sum(StockMovementORM.quantity * ProductORM.purchase_price).label("total_cost"),
+                func.sum(StockMovementORM.quantity * ProductORM.sale_price).label("total_revenue")
+            )
+            .join(ProductORM, StockMovementORM.product_id == ProductORM.id)
             .where(
                 StockMovementORM.tenant_id == tenant_id,
                 func.date(StockMovementORM.created_at) >= period_start,
@@ -84,14 +89,20 @@ class FinancialService:
             )
             .group_by(StockMovementORM.type)
         )
-        movement_totals: dict[str, float] = {
-            row.type.value: round(row.total, 2)
-            for row in movement_rows.fetchall()
-        }
+        movements = movement_rows.all()
+        
+        total_entries_value = 0.0
+        total_exits_value = 0.0
+        
+        for m in movements:
+            if m.type == MovementType.ENTRY:
+                total_entries_value += float(m.total_cost or 0.0)
+            elif m.type == MovementType.EXIT:
+                total_exits_value += float(m.total_revenue or 0.0)
 
-        total_entries = movement_totals.get(MovementType.ENTRY.value, 0.0)
-        total_exits = movement_totals.get(MovementType.EXIT.value, 0.0)
-        gross_margin = round(total_exits - total_expenses, 2)
+        total_entries_value = round(total_entries_value, 2)
+        total_exits_value = round(total_exits_value, 2)
+        gross_margin = round(total_exits_value - total_expenses, 2)
 
         logger.info(
             f"financial_summary tenant={tenant_id} "
@@ -105,7 +116,7 @@ class FinancialService:
             period_end=period_end,
             total_expenses=total_expenses,
             expenses_by_category=expenses_by_category,
-            total_entries_value=total_entries,
-            total_exits_value=total_exits,
+            total_entries_value=total_entries_value,
+            total_exits_value=total_exits_value,
             gross_margin=gross_margin,
         )

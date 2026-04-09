@@ -86,6 +86,9 @@ class ProductORM(Base):
     category = Column(SAEnum(ProductCategory), nullable=True)
     attributes = Column(JSON, nullable=True)  # Flexible: FabricAttributes, FoamAttributes, etc.
     is_active = Column(Boolean, default=True, nullable=False)
+    is_manual_low_stock = Column(Boolean, default=False, nullable=False)
+    purchase_price = Column(Float, default=0.0, nullable=False) # Unit cost
+    sale_price = Column(Float, default=0.0, nullable=False)     # Suggested sell price
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
     tenant = relationship("TenantORM", back_populates="products", lazy="noload")
@@ -195,8 +198,18 @@ class TenantSettingsORM(Base):
     tenant_id = Column(UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), primary_key=True)
     llm_provider = Column(String(40), default="gemini", nullable=False)
     gemini_api_key = Column(String(255), nullable=True)
+    gemini_model = Column(String(80), nullable=True)
     ollama_url = Column(String(255), nullable=True)
     ollama_model = Column(String(80), nullable=True)
+    
+    # Novas Provedoras
+    openai_api_key = Column(String(255), nullable=True)
+    openai_model = Column(String(80), nullable=True)
+    anthropic_api_key = Column(String(255), nullable=True)
+    anthropic_model = Column(String(80), nullable=True)
+    groq_api_key = Column(String(255), nullable=True)
+    groq_model = Column(String(80), nullable=True)
+
     is_multimodal_enabled = Column(Boolean, default=True, nullable=False)
 
     # Integração com Sistema Externo de Ordens de Serviço (Firebase)

@@ -182,26 +182,26 @@ export function AIMovementInput({ onDataExtracted, variant = "inline" }: AIInput
     <button
       onClick={onClick}
       className={cn(
-        "group flex flex-col items-center justify-center gap-3 p-6 rounded-2xl transition-all duration-300",
+        "group flex flex-col items-center justify-center gap-2 p-3 sm:p-4 rounded-xl transition-all duration-300",
         "bg-white/5 border border-white/10 hover:bg-white/10 hover:border-white/20 hover:scale-105 active:scale-95",
-        "shadow-[0_8px_30px_rgb(0,0,0,0.12)] backdrop-blur-md",
+        "shadow-md backdrop-blur-md",
         className
       )}
     >
-      <div className="p-3 rounded-xl bg-gradient-to-br from-primary/20 to-primary/5 text-primary group-hover:scale-110 transition-transform">
-        <Icon className="h-6 w-6" />
+      <div className="p-2 sm:p-2.5 rounded-xl bg-gradient-to-br from-indigo-500/20 to-purple-500/5 text-indigo-400 group-hover:scale-110 transition-transform">
+        <Icon className="h-5 w-5 sm:h-6 sm:w-6" />
       </div>
-      <span className="text-sm font-medium text-foreground/80">{label}</span>
+      <span className="text-[10px] sm:text-[11px] font-semibold text-white/80 w-full text-center truncate">{label}</span>
     </button>
   );
 
   return (
     <>
       {variant === "inline" ? (
-        <div className="grid grid-cols-3 gap-3 w-full">
+        <div className="grid grid-cols-3 gap-2 w-full">
           <ActionCard icon={Mic} label="Voz" onClick={startRecording} />
-          <ActionCard icon={ScanLine} label="Scan" onClick={() => fileInputRef.current?.click()} />
-          <ActionCard icon={FileText} label="Documento" onClick={() => pdfInputRef.current?.click()} />
+          <ActionCard icon={ScanLine} label="Foto" onClick={() => fileInputRef.current?.click()} />
+          <ActionCard icon={FileText} label="Anexo" onClick={() => pdfInputRef.current?.click()} />
         </div>
       ) : (
         <button

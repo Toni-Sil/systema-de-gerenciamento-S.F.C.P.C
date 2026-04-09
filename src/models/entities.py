@@ -57,6 +57,7 @@ class FoamAttributes(BaseModel):
 class ProductAttributes(BaseModel):
     tecido: Optional[FabricAttributes] = None
     espuma: Optional[FoamAttributes] = None
+    modelo_caminhao: Optional[str] = None
     outros: Optional[dict] = None
 
 
@@ -130,14 +131,32 @@ class UserSchema(BaseSchema):
 
 class ProductSchema(BaseSchema):
     id: UUID = Field(default_factory=uuid4)
-    tenant_id: UUID
+    tenant_id: Optional[UUID] = None
     code: str = Field(..., min_length=1, max_length=40)
     description: str = Field(..., min_length=1, max_length=255)
     unit: str = Field(..., min_length=1, max_length=20)
     min_stock: float = Field(default=0.0, ge=0.0)
     category: Optional[ProductCategory] = None
     attributes: Optional[ProductAttributes] = None
+    is_manual_low_stock: bool = False
+    purchase_price: float = Field(default=0.0)
+    sale_price: float = Field(default=0.0)
     created_at: datetime = Field(default_factory=datetime.utcnow)
+
+    @field_validator("category", mode="before")
+    @classmethod
+    def validate_category(cls, v: Any) -> Optional[ProductCategory]:
+        if v is None: return None
+        if isinstance(v, str):
+            # Mapeamento de frontend "Tecidos" -> "TECIDOS"
+            mapping = {
+                "tecidos": ProductCategory.FABRIC,
+                "espumas": ProductCategory.FOAM,
+                "madeiras": ProductCategory.WOOD,
+                "ferragens": ProductCategory.HARDWARE
+            }
+            return mapping.get(v.lower(), v)
+        return v
 
 
 # ---------------------------------------------------------------------------

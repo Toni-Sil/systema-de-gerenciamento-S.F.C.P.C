@@ -11,6 +11,8 @@ from llm.tools import LLMTools
 from llm.parser import LLMOuputValidator
 from llm.governance import GovernanceRules
 from llm.providers import get_llm_provider
+from llm.knowledge.logistics import get_truck_knowledge_hint
+
 
 logger = logging.getLogger(__name__)
 
@@ -54,21 +56,31 @@ class AgentOrchestrator:
         # 2. Obter Provedor de IA (Gemini, Ollama, OpenAI, etc)
         provider = await get_llm_provider(tenant_id, session)
         
+        # 3. Conhecimento Logístico Extra (Caminhões, Marcas, etc)
+        logistics_hint = get_truck_knowledge_hint()
+        
         try:
             system_instruction = (
                 "Você é o Especialista Logístico do SFC-PC (Smart System). "
                 f"Contexto do Tenant ID: {tenant_id}\n\n"
                 f"{catalog_hint}\n"
+                f"{logistics_hint}\n"
                 "Regras de Ouro:\n"
-                "1. Identifique o código do produto no catálogo acima.\n"
-                "2. Retorne OBRIGATORIAMENTE um JSON puro (nada mais).\n"
-                "3. Formatos válidos:\n"
-                "   - Entrada: {'action': 'Entry', 'params': {'product': 'CODIGO', 'quantity': 10}}\n"
-                "   - Saída: {'action': 'Exit', 'params': {'product': 'CODIGO', 'quantity': 5}}\n"
-                "   - Saldo/Estoque: {'action': 'InventoryStatus', 'params': {}}\n"
-                "   - Despesa: {'action': 'RegisterExpense', 'params': {'value': 100.0, 'supplier': 'Nome'}}\n"
-                "   - Novo Cliente OS: {'action': 'CreateClient', 'params': {'name': 'Nome', 'phone': '99999', 'email': '...', 'address': '...'}}\n"
-                "   - Nova OS: {'action': 'CreateOrder', 'params': {'client_id': 'ID', 'description': '...', 'priority': 'high', 'furnitureType': 'sofa_cama'}}\n"
+                "1. PENSE ANTES DE AGIR: Descreva brevemente seu raciocínio sobre qual produto ou valor foi identificado.\n"
+                "2. Identifique o código do produto no catálogo acima.\n"
+                "3. Retorne OBRIGATORIAMENTE um JSON puro (nada mais) com o campo 'thought' incluído.\n"
+                "4. Formatos válidos:\n"
+                "   - Entrada: {'thought': '...', 'action': 'Entry', 'params': {'product': 'CODIGO', 'quantity': 10}}\n"
+                "   - Saída: {'thought': '...', 'action': 'Exit', 'params': {'product': 'CODIGO', 'quantity': 5}}\n"
+                "   - Saldo/Estoque: {'thought': '...', 'action': 'InventoryStatus', 'params': {}}\n"
+                "   - Despesa: {'thought': '...', 'action': 'RegisterExpense', 'params': {'value': 100.0, 'supplier': 'Nome'}}\n"
+                "   - Novo Cliente OS: {'thought': '...', 'action': 'CreateClient', 'params': {'name': 'Nome', 'phone': '99999', 'email': '...', 'address': '...'}}\n"
+                "   - Nova OS: {'thought': '...', 'action': 'CreateOrder', 'params': {'client_id': 'ID', 'description': '...', 'priority': 'high', 'furnitureType': 'sofa_cama'}}\n"
+                "   - Consultar OS: {'thought': '...', 'action': 'CheckOrder', 'params': {'order_id': '...'}}\n"
+                "   - Listar Todas OS: {'thought': '...', 'action': 'ListOrders', 'params': {}}\n"
+                "   - Alerta Manual Falta de Material: {'thought': '...', 'action': 'ReportLowStock', 'params': {'product': 'CODIGO'}}\n"
+                "   - Curva ABC/Importância: {'thought': '...', 'action': 'GetABCAnalysis', 'params': {}}\n"
+                "   - Previsão de Demanda: {'thought': '...', 'action': 'GetDemandForecast', 'params': {'days': 30}}\n"
             )
 
             # 3. Gerar Resposta via Provedor Selecionado
@@ -117,6 +129,29 @@ class AgentOrchestrator:
                     )
                     return AgentOrchestrator._merge_tool_resp(governed_intent, tool_resp)
 
+                elif action == "CheckOrder":
+                    from llm.tools import ServiceOrderTools
+                    tool_resp = await ServiceOrderTools.check_order(tenant_id, params.get("order_id"), session)
+                    return AgentOrchestrator._merge_tool_resp(governed_intent, tool_resp)
+
+                elif action == "ListOrders":
+                    from llm.tools import ServiceOrderTools
+                    tool_resp = await ServiceOrderTools.list_orders(tenant_id, session)
+                    return AgentOrchestrator._merge_tool_resp(governed_intent, tool_resp)
+
+                elif action == "ReportLowStock":
+                    tool_resp = await LLMTools.report_low_stock(tenant_id, params.get("product"), session)
+                    return AgentOrchestrator._merge_tool_resp(governed_intent, tool_resp)
+
+                elif action == "GetABCAnalysis":
+                    tool_resp = await LLMTools.get_abc_analysis(tenant_id, session)
+                    return AgentOrchestrator._merge_tool_resp(governed_intent, tool_resp)
+
+                elif action == "GetDemandForecast":
+                    days = int(params.get("days", 30))
+                    tool_resp = await LLMTools.get_demand_forecast(tenant_id, days, session)
+                    return AgentOrchestrator._merge_tool_resp(governed_intent, tool_resp)
+
             # --- NOVO: Se cair na Governança, salvar como ação pendente ---
             if status == "needs_approval":
                 new_pending = PendingActionORM(
@@ -158,10 +193,12 @@ class AgentOrchestrator:
         provider = await get_llm_provider(tenant_id, session)
 
         # 2. Instrução de Especialista em Visão de Documentos
+        logistics_hint = get_truck_knowledge_hint()
         system_instruction = (
             "Você é o Especialista em Visão Computacional do SFC-PC. "
             "Sua tarefa é ler este documento/imagem e extrair movimentações de estoque ou faturas financeiras.\n\n"
             f"{catalog_hint}\n"
+            f"{logistics_hint}\n"
             "Retorne APENAS o JSON da intenção:\n"
             "- Se for uma Nota Fiscal de compra: {'action': 'RegisterExpense', 'params': {'value': 0.0, 'supplier': '...'}}\n"
             "- Se for um canhoto de entrega: {'action': 'Entry', 'params': {'product': '...', 'quantity': 0}}\n"

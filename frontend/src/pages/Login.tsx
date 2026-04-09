@@ -39,11 +39,14 @@ export default function Login() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background px-4">
-      <Card className="w-full max-w-sm border-none bg-zinc-950/50 backdrop-blur-xl shadow-2xl">
-        <CardHeader className="text-center">
-          <CardTitle className="text-3xl font-bold tracking-tighter gradient-text">S.F.C.P.C</CardTitle>
-          <CardDescription>Gestão Inteligente de Estoque</CardDescription>
+    <div className="min-h-[100dvh] flex items-center justify-center bg-background px-4">
+      <Card className="w-full max-w-sm border-none bg-zinc-950/50 backdrop-blur-xl shadow-2xl overflow-hidden relative noise">
+        <CardHeader className="text-center pt-8">
+          <div className="mx-auto w-24 h-24 mb-4 rounded-full border-2 border-primary p-2 bg-white shadow-xl float flex items-center justify-center overflow-hidden">
+            <img src="/assets/logo.png" alt="Logo" className="w-full h-full object-contain drop-shadow-sm rounded-full" />
+          </div>
+          <CardTitle className="text-3xl font-black tracking-tighter text-white drop-shadow-md">S.F.C.P.C</CardTitle>
+          <CardDescription className="text-primary font-bold uppercase tracking-widest text-[10px]">Gestão de Sofás para Caminhões</CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
